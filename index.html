@@ -112,32 +112,51 @@
     <script type="module">
         // Import the functions you need from the SDKs you need
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; // Removed signInAnonymously and signInWithCustomToken
         import { getFirestore, collection, addDoc, doc, deleteDoc, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js"; // Import Analytics
 
-        // Global variables provided by the Canvas environment
+        // Global variables provided by the Canvas environment (appId is still useful)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        // In this Canvas environment, firebaseConfig is provided dynamically via __firebase_config.
-        // The user-provided firebaseConfig is for reference or local setup.
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // Using the explicit firebaseConfig provided by the user for robustness
+        const firebaseConfig = {
+            apiKey: "AIzaSyAsU2z08kptC-fgTPGAhqYH0MTGEyZ0ZRc",
+            authDomain: "agenda-d02b4.firebaseapp.com",
+            projectId: "agenda-d02b4",
+            storageBucket: "agenda-d02b4.firebasestorage.app",
+            messagingSenderId: "673443383193",
+            appId: "1:673443383193:web:6a9054412c7529eba07508",
+            measurementId: "G-9S0T2ED4JF"
+        };
+        // initialAuthToken is not relevant for GitHub Pages deployment, so it's removed from direct use.
 
         console.log('--- Início do Script ---');
-        console.log('firebaseConfig:', firebaseConfig);
+        console.log('firebaseConfig carregado:', firebaseConfig);
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        console.log('Firebase App inicializado:', app);
+        let app;
+        let analytics;
+        let auth;
+        let db;
 
-        const analytics = getAnalytics(app); // Initialize Analytics
-        console.log('Firebase Analytics inicializado:', analytics);
+        try {
+            // Initialize Firebase App
+            app = initializeApp(firebaseConfig);
+            console.log('Firebase App inicializado com sucesso:', app);
 
-        const auth = getAuth(app); // Usando getAuth(app) para a sintaxe modular
-        console.log('Firebase Auth inicializado:', auth);
+            // Initialize Firebase services
+            analytics = getAnalytics(app);
+            console.log('Firebase Analytics inicializado com sucesso:', analytics);
 
-        const db = getFirestore(app); // Usando getFirestore(app) para a sintaxe modular
-        console.log('Firebase Firestore inicializado:', db);
+            auth = getAuth(app);
+            console.log('Firebase Auth inicializado com sucesso:', auth);
+
+            db = getFirestore(app);
+            console.log('Firebase Firestore inicializado com sucesso:', db);
+
+        } catch (error) {
+            console.error('Erro CRÍTICO ao inicializar Firebase App ou serviços:', error);
+            showCustomModal('Erro crítico ao inicializar o aplicativo. Verifique as configurações do Firebase no console.');
+        }
 
         // References to DOM elements
         const authButton = document.getElementById('auth-button');
@@ -205,6 +224,11 @@
         // Handle Google Sign-In
         authButton.addEventListener('click', async () => {
             console.log('Botão de Login clicado!'); // Adicionado para depuração
+            if (!auth) { // Check if auth object is valid
+                console.error('Erro: Objeto de autenticação Firebase não está inicializado.');
+                showCustomModal('Erro interno: O serviço de autenticação não foi inicializado corretamente. Por favor, recarregue a página.');
+                return;
+            }
             const provider = new GoogleAuthProvider();
             try {
                 await signInWithPopup(auth, provider);
@@ -255,25 +279,20 @@
                 authButton.classList.remove('hidden');
                 logoutButton.classList.add('hidden');
                 appContent.classList.add('hidden'); // Hide agenda content
-                eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
+                eventsContainer.innerHTML = '<p class="text-center text-gray-500">Faça login para ver suas apresentações.</p>';
                 currentUserIdDisplay.textContent = '';
                 firestoreEventsCollection = null; // Clear collection reference
             }
         });
 
-        // Initial authentication check using custom token if available, otherwise anonymous
+        // No initial anonymous sign-in on window.onload for GitHub Pages deployment.
+        // The app will wait for the user to click "Login com Google".
         window.onload = async () => {
-            try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Erro na autenticação inicial:", error);
-                showCustomModal("Erro na autenticação inicial. Por favor, tente recarregar a página.");
-            }
+            // No action needed here for initial authentication on GitHub Pages.
+            // The onAuthStateChanged listener will handle the state once a user logs in.
+            console.log('Página carregada. Aguardando interação do usuário para login.');
         };
+
 
         // --- Firestore Functions (Add, Load, Delete) ---
 
