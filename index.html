@@ -123,11 +123,21 @@
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
+        console.log('--- Início do Script ---');
+        console.log('firebaseConfig:', firebaseConfig);
+
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
+        console.log('Firebase App inicializado:', app);
+
         const analytics = getAnalytics(app); // Initialize Analytics
+        console.log('Firebase Analytics inicializado:', analytics);
+
         const auth = getAuth(app); // Usando getAuth(app) para a sintaxe modular
+        console.log('Firebase Auth inicializado:', auth);
+
         const db = getFirestore(app); // Usando getFirestore(app) para a sintaxe modular
+        console.log('Firebase Firestore inicializado:', db);
 
         // References to DOM elements
         const authButton = document.getElementById('auth-button');
