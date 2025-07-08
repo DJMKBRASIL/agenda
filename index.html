@@ -77,6 +77,11 @@
                     <label for="event-location" class="block text-gray-700 text-sm font-bold mb-2">Local:</label>
                     <input type="text" id="event-location" placeholder="Ex: Burley Lounge" required class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
+                <div>
+                    <label for="reminder-minutes" class="block text-gray-700 text-sm font-bold mb-2">Lembrete (minutos antes):</label>
+                    <input type="number" id="reminder-minutes" min="0" value="120" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <p class="text-xs text-gray-500 mt-1">0 para sem lembrete. Ex: 120 para 2 horas antes.</p>
+                </div>
                 <div class="md:col-span-2">
                     <label for="event-notes" class="block text-gray-700 text-sm font-bold mb-2">Observações (opcional):</label>
                     <textarea id="event-notes" rows="3" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
@@ -118,8 +123,6 @@
         // Global error handler for debugging script loading issues
         window.onerror = function(message, source, lineno, colno, error) {
             console.error("Erro global capturado:", { message, source, lineno, colno, error });
-            // Optionally show a modal for critical errors
-            // showCustomModal('Um erro crítico ocorreu. Por favor, tente recarregar a página.');
             return true; // Prevents the default browser error handling
         };
 
@@ -139,296 +142,426 @@
 
         console.log('--- Início do Script Principal ---');
         console.log('firebaseConfig carregado:', firebaseConfig);
-        console.log('Tipo de "firebase" (imediatamente):', typeof firebase); // Verifica se o objeto global firebase existe
+        console.log('Tipo de "firebase" (imediatamente após scripts compat):', typeof firebase); // Verifica se o objeto global firebase existe
 
         let app;
         let analytics;
         let auth;
         let db;
 
-        // Inicializa o Firebase e seus serviços
-        // Esta parte do código será executada assim que o script for carregado,
-        // o que deve ser após os scripts compat.js terem criado o objeto global 'firebase'.
-        try {
-            // Initialize Firebase App
-            app = firebase.initializeApp(firebaseConfig); // Using firebase.initializeApp
-            console.log('Firebase App inicializado com sucesso:', app);
+        // Função para inicializar o Firebase e seus serviços
+        async function initializeFirebaseAndApp() {
+            console.log('Tentando inicializar Firebase e App...');
+            if (typeof firebase === 'undefined') {
+                console.error('Erro: O objeto global "firebase" ainda não está disponível. Isso indica que os SDKs do Firebase não foram carregados corretamente.');
+                showCustomModal('Erro crítico: Os serviços do Firebase não puderam ser carregados. Verifique sua conexão com a internet e as configurações do Firebase.');
+                return; // Impede a execução se 'firebase' não estiver disponível
+            }
 
-            // Initialize Firebase services
-            analytics = firebase.analytics(); // Using firebase.analytics()
-            console.log('Firebase Analytics inicializado com sucesso:', analytics);
+            try {
+                // Initialize Firebase App
+                app = firebase.initializeApp(firebaseConfig); // Using firebase.initializeApp
+                console.log('Firebase App inicializado com sucesso:', app);
 
-            auth = firebase.auth(); // Using firebase.auth()
-            console.log('Firebase Auth inicializado com sucesso:', auth);
+                // Initialize Firebase services
+                analytics = firebase.analytics(); // Using firebase.analytics()
+                console.log('Firebase Analytics inicializado com sucesso:', analytics);
 
-            db = firebase.firestore(); // Using firebase.firestore()
-            console.log('Firebase Firestore inicializado com sucesso:', db);
+                auth = firebase.auth(); // Using firebase.auth()
+                console.log('Firebase Auth inicializado com sucesso:', auth);
 
-        } catch (error) {
-            console.error('Erro CRÍTICO ao inicializar Firebase App ou serviços:', error);
-            showCustomModal('Erro crítico ao inicializar o aplicativo. Verifique as configurações do Firebase no console.');
-            // Não usamos 'return' aqui para não interromper o script globalmente,
-            // mas a funcionalidade dependerá da inicialização bem-sucedida.
+                db = firebase.firestore(); // Using firebase.firestore()
+                console.log('Firebase Firestore inicializado com sucesso:', db);
+
+                // Agora que o Firebase está inicializado, podemos configurar os listeners e a lógica do app
+                setupAppLogic();
+
+            } catch (error) {
+                console.error('Erro CRÍTICO ao inicializar Firebase App ou serviços:', error);
+                showCustomModal('Erro crítico ao inicializar o aplicativo. Verifique as configurações do Firebase no console.');
+            }
         }
 
-        // References to DOM elements (these should be available as the script runs after body)
-        const authButton = document.getElementById('auth-button');
-        const logoutButton = document.getElementById('logout-button');
-        const userInfo = document.getElementById('user-info');
-        const appContent = document.getElementById('app-content');
-        const eventForm = document.getElementById('event-form');
-        const eventDateInput = document.getElementById('event-date');
-        const eventTimeInput = document.getElementById('event-time');
-        const eventDurationInput = document.getElementById('event-duration');
-        const eventLocationInput = document.getElementById('event-location');
-        const eventNotesInput = document.getElementById('event-notes');
-        const eventsContainer = document.getElementById('events-container');
-        const currentUserIdDisplay = document.getElementById('current-user-id');
+        // Função que contém toda a lógica do seu aplicativo, que só será chamada após o Firebase ser inicializado
+        function setupAppLogic() {
+            // References to DOM elements (these should be available as the script runs after body)
+            const authButton = document.getElementById('auth-button');
+            const logoutButton = document.getElementById('logout-button');
+            const userInfo = document.getElementById('user-info');
+            const appContent = document.getElementById('app-content');
+            const eventForm = document.getElementById('event-form');
+            const eventDateInput = document.getElementById('event-date');
+            const eventTimeInput = document.getElementById('event-time');
+            const eventDurationInput = document.getElementById('event-duration');
+            const eventLocationInput = document.getElementById('event-location');
+            const eventNotesInput = document.getElementById('event-notes');
+            const reminderMinutesInput = document.getElementById('reminder-minutes'); // Novo input
+            const eventsContainer = document.getElementById('events-container');
+            const currentUserIdDisplay = document.getElementById('current-user-id');
 
-        // Modal elements
-        const customModal = document.getElementById('custom-modal');
-        const modalMessage = document.getElementById('modal-message');
-        const modalConfirmButton = document.getElementById('modal-confirm-button');
-        const modalCancelButton = document.getElementById('modal-cancel-button');
+            // Modal elements
+            const customModal = document.getElementById('custom-modal');
+            const modalMessage = document.getElementById('modal-message');
+            const modalConfirmButton = document.getElementById('modal-confirm-button');
+            const modalCancelButton = document.getElementById('modal-cancel-button');
 
-        let currentUser = null; // Stores the logged-in user object
-        let firestoreEventsCollection = null; // Collection reference, set after user is known
+            let currentUser = null; // Stores the logged-in user object
+            let firestoreEventsCollection = null; // Collection reference, set after user is known
+            let reminderTimeouts = {}; // Stores timeouts for reminders to clear them if needed
 
-        /**
-         * Displays a custom alert or confirmation modal.
-         * @param {string} message - The message to display.
-         * @param {boolean} isConfirm - If true, shows a confirm button.
-         * @returns {Promise<boolean>} Resolves with true if confirmed, false if cancelled.
-         */
-        function showCustomModal(message, isConfirm = false) {
-            return new Promise((resolve) => {
-                modalMessage.textContent = message;
-                customModal.classList.remove('hidden');
+            /**
+             * Displays a custom alert or confirmation modal.
+             * @param {string} message - The message to display.
+             * @param {boolean} isConfirm - If true, shows a confirm button.
+             * @param {string} confirmText - Text for the confirm button.
+             * @param {string} cancelText - Text for the cancel/OK button.
+             * @returns {Promise<boolean>} Resolves with true if confirmed, false if cancelled.
+             */
+            function showCustomModal(message, isConfirm = false, confirmText = 'Confirmar', cancelText = 'OK') {
+                return new Promise((resolve) => {
+                    modalMessage.textContent = message;
+                    customModal.classList.remove('hidden');
 
-                if (isConfirm) {
-                    modalConfirmButton.classList.remove('hidden');
-                    modalCancelButton.textContent = 'Cancelar';
-                } else {
-                    modalConfirmButton.classList.add('hidden');
-                    modalCancelButton.textContent = 'OK';
+                    if (isConfirm) {
+                        modalConfirmButton.classList.remove('hidden');
+                        modalConfirmButton.textContent = confirmText;
+                        modalCancelButton.textContent = cancelText;
+                    } else {
+                        modalConfirmButton.classList.add('hidden');
+                        modalCancelButton.textContent = cancelText;
+                    }
+
+                    const handleConfirm = () => {
+                        customModal.classList.add('hidden');
+                        modalConfirmButton.removeEventListener('click', handleConfirm);
+                        modalCancelButton.removeEventListener('click', handleCancel);
+                        resolve(true);
+                    };
+
+                    const handleCancel = () => {
+                        customModal.classList.add('hidden');
+                        modalConfirmButton.removeEventListener('click', handleConfirm);
+                        modalCancelButton.removeEventListener('click', handleCancel);
+                        resolve(false);
+                    };
+
+                    modalConfirmButton.addEventListener('click', handleConfirm);
+                    modalCancelButton.addEventListener('click', handleCancel);
+                });
+            }
+
+            // --- Authentication Functions ---
+
+            // Handle Google Sign-In
+            authButton.addEventListener('click', async () => {
+                console.log('Botão de Login clicado!'); // Adicionado para depuração
+                if (!auth) { // Check if auth object is valid
+                    console.error('Erro: Objeto de autenticação Firebase não está inicializado. Não é possível prosseguir com o login.');
+                    showCustomModal('Erro interno: O serviço de autenticação não foi inicializado corretamente. Por favor, recarregue a página e verifique o console.');
+                    return;
                 }
-
-                const handleConfirm = () => {
-                    customModal.classList.add('hidden');
-                    modalConfirmButton.removeEventListener('click', handleConfirm);
-                    modalCancelButton.removeEventListener('click', handleCancel);
-                    resolve(true);
-                };
-
-                const handleCancel = () => {
-                    customModal.classList.add('hidden');
-                    modalConfirmButton.removeEventListener('click', handleConfirm);
-                    modalCancelButton.removeEventListener('click', handleCancel);
-                    resolve(false);
-                };
-
-                modalConfirmButton.addEventListener('click', handleConfirm);
-                modalCancelButton.addEventListener('click', handleCancel);
-            });
-        }
-
-        // --- Authentication Functions ---
-
-        // Handle Google Sign-In
-        authButton.addEventListener('click', async () => {
-            console.log('Botão de Login clicado!'); // Adicionado para depuração
-            if (!auth) { // Check if auth object is valid
-                console.error('Erro: Objeto de autenticação Firebase não está inicializado. Não é possível prosseguir com o login.');
-                showCustomModal('Erro interno: O serviço de autenticação não foi inicializado corretamente. Por favor, recarregue a página e verifique o console.');
-                return;
-            }
-            const provider = new firebase.auth.GoogleAuthProvider(); // Using firebase.auth.GoogleAuthProvider
-            try {
-                await auth.signInWithPopup(provider); // Using auth.signInWithPopup
-                // Auth state change listener will handle UI updates
-            } catch (error) {
-                console.error('Erro no login:', error);
-                // Verifica se o erro é devido a pop-up bloqueado
-                if (error.code === 'auth/popup-blocked') {
-                    showCustomModal('O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups para este site e tente novamente.');
-                } else if (error.code === 'auth/popup-closed-by-user') {
-                    showCustomModal('O pop-up de login foi fechado. Tente novamente.');
-                } else {
-                    showCustomModal('Erro ao fazer login. Tente novamente. Detalhes no console.');
-                }
-            }
-        });
-
-        // Handle Logout
-        logoutButton.addEventListener('click', async () => {
-            try {
-                await auth.signOut(); // Using auth.signOut()
-                // Auth state change listener will handle UI updates
-            } catch (error) {
-                console.error('Erro no logout:', error);
-                showCustomModal('Erro ao fazer logout. Tente novamente.');
-            }
-        });
-
-        // Observe authentication state changes
-        // Garante que 'auth' esteja definido antes de chamar onAuthStateChanged
-        if (auth) {
-            auth.onAuthStateChanged(async (user) => { // Using auth.onAuthStateChanged
-                if (user) {
-                    currentUser = user;
-                    userInfo.textContent = `Olá, ${user.displayName || user.email}!`;
-                    authButton.classList.add('hidden');
-                    logoutButton.classList.remove('hidden');
-                    appContent.classList.remove('hidden'); // Show agenda content
-
-                    // Set the Firestore collection path based on the authenticated user
-                    // Private data: /artifacts/{appId}/users/{userId}/{your_collection_name}
-                    firestoreEventsCollection = db.collection(`artifacts/${appId}/users/${currentUser.uid}/events`); // Using db.collection
-                    currentUserIdDisplay.textContent = `Seu ID de Usuário: ${currentUser.uid}`;
-                    console.log("Firestore Collection Path sendo acessado:", firestoreEventsCollection.path); // Log the path
-
-                    loadEvents(); // Load events for the logged-in user
-                } else {
-                    currentUser = null;
-                    userInfo.textContent = 'Por favor, faça login.';
-                    authButton.classList.remove('hidden');
-                    logoutButton.classList.add('hidden');
-                    appContent.classList.add('hidden'); // Hide agenda content
-                    eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
-                    currentUserIdDisplay.textContent = '';
-                    firestoreEventsCollection = null; // Clear collection reference
+                const provider = new firebase.auth.GoogleAuthProvider(); // Using firebase.auth.GoogleAuthProvider
+                try {
+                    await auth.signInWithPopup(provider); // Using auth.signInWithPopup
+                    // Auth state change listener will handle UI updates
+                } catch (error) {
+                    console.error('Erro no login:', error);
+                    // Verifica se o erro é devido a pop-up bloqueado
+                    if (error.code === 'auth/popup-blocked') {
+                        showCustomModal('O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups para este site e tente novamente.');
+                    } else if (error.code === 'auth/popup-closed-by-user') {
+                        showCustomModal('O pop-up de login foi fechado. Tente novamente.');
+                    } else {
+                        showCustomModal('Erro ao fazer login. Tente novamente. Detalhes no console.');
+                    }
                 }
             });
-        } else {
-            console.warn("Auth object not available for onAuthStateChanged. Authentication functionality may be limited.");
-        }
 
+            // Handle Logout
+            logoutButton.addEventListener('click', async () => {
+                try {
+                    await auth.signOut(); // Using auth.signOut()
+                    // Auth state change listener will handle UI updates
+                } catch (error) {
+                    console.error('Erro no logout:', error);
+                    showCustomModal('Erro ao fazer logout. Tente novamente.');
+                }
+            });
 
-        // No initial anonymous sign-in on window.onload for GitHub Pages deployment.
-        // The app will wait for the user to click "Login com Google".
-        // O código dentro de DOMContentLoaded já garante que o DOM está pronto.
-        console.log('Página carregada. Aguardando interação do usuário para login.');
+            // Observe authentication state changes
+            // Garante que 'auth' esteja definido antes de chamar onAuthStateChanged
+            if (auth) {
+                auth.onAuthStateChanged(async (user) => { // Using auth.onAuthStateChanged
+                    if (user) {
+                        currentUser = user;
+                        userInfo.textContent = `Olá, ${user.displayName || user.email}!`;
+                        authButton.classList.add('hidden');
+                        logoutButton.classList.remove('hidden');
+                        appContent.classList.remove('hidden'); // Show agenda content
 
+                        // Set the Firestore collection path based on the authenticated user
+                        // Private data: /artifacts/{appId}/users/{userId}/{your_collection_name}
+                        firestoreEventsCollection = db.collection(`artifacts/${appId}/users/${currentUser.uid}/events`); // Using db.collection
+                        currentUserIdDisplay.textContent = `Seu ID de Usuário: ${currentUser.uid}`;
+                        console.log("Firestore Collection Path sendo acessado:", firestoreEventsCollection.path); // Log the path
 
-        // --- Firestore Functions (Add, Load, Delete) ---
-
-        // Add a new event
-        eventForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            if (!currentUser) {
-                showCustomModal('Você precisa estar logado para adicionar eventos.');
-                return;
-            }
-            if (!firestoreEventsCollection) {
-                showCustomModal('Erro: Coleção de eventos não inicializada. Tente novamente.');
-                return;
-            }
-
-            const eventData = {
-                date: eventDateInput.value,
-                time: eventTimeInput.value,
-                duration: parseInt(eventDurationInput.value),
-                location: eventLocationInput.value.trim(),
-                notes: eventNotesInput.value.trim(),
-                userId: currentUser.uid, // Store user ID to filter events
-                createdAt: firebase.firestore.FieldValue.serverTimestamp() // Using firebase.firestore.FieldValue.serverTimestamp()
-            };
-
-            // Basic validation
-            if (!eventData.date || !eventData.time || !eventData.duration || !eventData.location) {
-                showCustomModal('Por favor, preencha todos os campos obrigatórios.');
-                return;
-            }
-            if (eventData.duration <= 0) {
-                showCustomModal('A duração deve ser um número positivo.');
-                return;
-            }
-
-            try {
-                await firestoreEventsCollection.add(eventData); // Using collection.add()
-                showCustomModal('Apresentação adicionada com sucesso!');
-                eventForm.reset(); // Clear the form
-            } catch (error) {
-                console.error('Erro ao adicionar evento:', error);
-                showCustomModal('Erro ao adicionar apresentação. Tente novamente.');
-            }
-        });
-
-        // Load events from Firestore
-        const loadEvents = () => {
-            if (!currentUser || !firestoreEventsCollection) {
-                eventsContainer.innerHTML = '<p class="text-center text-gray-500">Faça login para ver suas apresentações.</p>';
-                return;
+                        loadEvents(); // Load events for the logged-in user
+                    } else {
+                        currentUser = null;
+                        userInfo.textContent = 'Por favor, faça login.';
+                        authButton.classList.remove('hidden');
+                        logoutButton.classList.add('hidden');
+                        appContent.classList.add('hidden'); // Hide agenda content
+                        eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
+                        currentUserIdDisplay.textContent = '';
+                        firestoreEventsCollection = null; // Clear collection reference
+                        // Clear any pending timeouts when user logs out
+                        for (const timeoutId in reminderTimeouts) {
+                            clearTimeout(reminderTimeouts[timeoutId]);
+                        }
+                        reminderTimeouts = {};
+                    }
+                });
+            } else {
+                console.warn("Auth object not available for onAuthStateChanged. Authentication functionality may be limited.");
             }
 
-            // Create a query to get all events for the current user
-            const q = firestoreEventsCollection.where('userId', '==', currentUser.uid); // Using collection.where()
 
-            // Listen for real-time updates
-            q.onSnapshot((snapshot) => { // Using query.onSnapshot()
-                eventsContainer.innerHTML = ''; // Clear current list
-                if (snapshot.empty) {
-                    eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
+            // No initial anonymous sign-in on window.onload for GitHub Pages deployment.
+            // The app will wait for the user to click "Login com Google".
+            // O código dentro de DOMContentLoaded já garante que o DOM está pronto.
+            console.log('Página carregada. Aguardando interação do usuário para login.');
+
+
+            // --- Firestore Functions (Add, Load, Delete) ---
+
+            // Add a new event
+            eventForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                if (!currentUser) {
+                    showCustomModal('Você precisa estar logado para adicionar eventos.');
+                    return;
+                }
+                if (!firestoreEventsCollection) {
+                    showCustomModal('Erro: Coleção de eventos não inicializada. Tente novamente.');
                     return;
                 }
 
-                let events = [];
-                snapshot.forEach((document) => {
-                    const event = document.data();
-                    const eventId = document.id;
-                    events.push({ id: eventId, ...event });
-                });
-
-                // Sort events in JavaScript by date and then by time
-                events.sort((a, b) => {
-                    const dateA = new Date(`${a.date}T${a.time}`);
-                    const dateB = new Date(`${b.date}T${b.time}`);
-                    return dateA - dateB;
-                });
-
-                events.forEach((event) => {
-                    const eventElement = document.createElement('div');
-                    eventElement.classList.add('event-item', 'bg-blue-50', 'border', 'border-blue-200', 'p-4', 'rounded-lg', 'relative', 'shadow-sm');
-                    eventElement.innerHTML = `
-                        <h3 class="text-xl font-semibold text-blue-800 mb-2">${event.location}</h3>
-                        <p class="text-gray-700"><strong>Data:</strong> ${new Date(event.date + 'T' + event.time).toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
-                        <p class="text-gray-700"><strong>Horário:</strong> ${event.time}</p>
-                        <p class="text-gray-700"><strong>Duração:</strong> ${event.duration} minutos</p>
-                        ${event.notes ? `<p class="text-gray-700"><strong>Observações:</strong> ${event.notes}</p>` : ''}
-                        <button class="delete-button bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md font-semibold absolute top-4 right-4 transition duration-300 shadow-md" data-id="${event.id}">Cancelar</button>
-                    `;
-                    eventsContainer.appendChild(eventElement);
-                });
-                attachDeleteListeners(); // Attach listeners to new delete buttons
-            }, (error) => {
-                console.error('Erro ao carregar eventos:', error);
-                showCustomModal('Erro ao carregar apresentações. Verifique suas permissões no Firebase Firestore e o console para detalhes.');
-            });
-        };
-
-        // Attach click listeners to delete buttons
-        const attachDeleteListeners = () => {
-            document.querySelectorAll('.delete-button').forEach(button => {
-                button.onclick = async (e) => {
-                    const eventId = e.target.dataset.id;
-                    const confirmed = await showCustomModal('Tem certeza que deseja cancelar esta apresentação?', true);
-                    if (confirmed) {
-                        try {
-                            if (!firestoreEventsCollection) {
-                                showCustomModal('Erro: Coleção de eventos não inicializada. Tente novamente.');
-                                return;
-                            }
-                            await firestoreEventsCollection.doc(eventId).delete(); // Using doc().delete()
-                            showCustomModal('Apresentação cancelada com sucesso!');
-                        } catch (error) {
-                            console.error('Erro ao cancelar evento:', error);
-                            showCustomModal('Erro ao cancelar apresentação. Tente novamente.');
-                        }
-                    }
+                const eventData = {
+                    date: eventDateInput.value,
+                    time: eventTimeInput.value,
+                    duration: parseInt(eventDurationInput.value),
+                    location: eventLocationInput.value.trim(),
+                    notes: eventNotesInput.value.trim(),
+                    reminderMinutesBefore: parseInt(reminderMinutesInput.value) || 0, // Novo campo
+                    isReminded: false, // Novo campo para controlar se o lembrete já foi exibido
+                    userId: currentUser.uid, // Store user ID to filter events
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp() // Using firebase.firestore.FieldValue.serverTimestamp()
                 };
+
+                // Basic validation
+                if (!eventData.date || !eventData.time || !eventData.duration || !eventData.location) {
+                    showCustomModal('Por favor, preencha todos os campos obrigatórios.');
+                    return;
+                }
+                if (eventData.duration <= 0) {
+                    showCustomModal('A duração deve ser um número positivo.');
+                    return;
+                }
+                if (eventData.reminderMinutesBefore < 0) {
+                    showCustomModal('O tempo do lembrete não pode ser negativo.');
+                    return;
+                }
+
+                try {
+                    await firestoreEventsCollection.add(eventData); // Using collection.add()
+                    showCustomModal('Apresentação adicionada com sucesso!');
+                    eventForm.reset(); // Clear the form
+                } catch (error) {
+                    console.error('Erro ao adicionar evento:', error);
+                    showCustomModal('Erro ao adicionar apresentação. Tente novamente.');
+                }
             });
-        };
+
+            // Load events from Firestore
+            const loadEvents = () => {
+                if (!currentUser || !firestoreEventsCollection) {
+                    eventsContainer.innerHTML = '<p class="text-center text-gray-500">Faça login para ver suas apresentações.</p>';
+                    return;
+                }
+
+                // Create a query to get all events for the current user
+                const q = firestoreEventsCollection.where('userId', '==', currentUser.uid); // Using collection.where()
+
+                // Clear existing timeouts before loading new events
+                for (const timeoutId in reminderTimeouts) {
+                    clearTimeout(reminderTimeouts[timeoutId]);
+                }
+                reminderTimeouts = {};
+
+                // Listen for real-time updates
+                q.onSnapshot((snapshot) => { // Using query.onSnapshot()
+                    eventsContainer.innerHTML = ''; // Clear current list
+                    if (snapshot.empty) {
+                        eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
+                        return;
+                    }
+
+                    let events = [];
+                    snapshot.forEach((document) => {
+                        const event = document.data();
+                        const eventId = document.id;
+                        events.push({ id: eventId, ...event });
+                    });
+
+                    // Sort events in JavaScript by date and then by time
+                    events.sort((a, b) => {
+                        const dateA = new Date(`${a.date}T${a.time}`);
+                        const dateB = new Date(`${b.date}T${b.time}`);
+                        return dateA - dateB;
+                    });
+
+                    events.forEach((event) => {
+                        const eventElement = document.createElement('div');
+                        eventElement.classList.add('event-item', 'bg-blue-50', 'border', 'border-blue-200', 'p-4', 'rounded-lg', 'relative', 'shadow-sm');
+                        
+                        // Format date to include weekday
+                        const eventDateTime = new Date(`${event.date}T${event.time}`);
+                        const formattedDate = eventDateTime.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            weekday: 'long' // Adiciona o dia da semana por extenso
+                        });
+
+                        // Display reminder status
+                        let reminderStatus = '';
+                        if (event.reminderMinutesBefore > 0) {
+                            reminderStatus = `<span class="text-xs ${event.isReminded ? 'text-green-600' : 'text-yellow-600'}">Lembrete: ${event.reminderMinutesBefore} minutos antes ${event.isReminded ? '(Lembrado)' : ''}</span>`;
+                        } else {
+                            reminderStatus = `<span class="text-xs text-gray-500">Sem lembrete</span>`;
+                        }
+
+                        eventElement.innerHTML = `
+                            <h3 class="text-xl font-semibold text-blue-800 mb-2">${event.location}</h3>
+                            <p class="text-gray-700"><strong>Data:</strong> ${formattedDate}</p>
+                            <p class="text-gray-700"><strong>Horário:</strong> ${event.time}</p>
+                            <p class="text-gray-700"><strong>Duração:</strong> ${event.duration} minutos</p>
+                            ${event.notes ? `<p class="text-gray-700"><strong>Observações:</strong> ${event.notes}</p>` : ''}
+                            <p class="text-gray-700 mt-2">${reminderStatus}</p>
+                            <button class="delete-button bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md font-semibold absolute top-4 right-4 transition duration-300 shadow-md" data-id="${event.id}">Cancelar</button>
+                            ${(!event.isReminded && event.reminderMinutesBefore > 0) ? `<button class="mark-reminded-button bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-semibold absolute top-16 right-4 transition duration-300 shadow-md" data-id="${event.id}">Marcar como Lembrado</button>` : ''}
+                        `;
+                        eventsContainer.appendChild(eventElement);
+                        
+                        // Schedule reminder if not already reminded and reminder time is set
+                        if (event.reminderMinutesBefore > 0 && !event.isReminded) {
+                            scheduleReminder(event);
+                        }
+                    });
+                    attachDeleteListeners(); // Attach listeners to new delete buttons
+                    attachMarkRemindedListeners(); // Attach listeners for new mark as reminded buttons
+                }, (error) => {
+                    console.error('Erro ao carregar eventos:', error);
+                    showCustomModal('Erro ao carregar apresentações. Verifique suas permissões no Firebase Firestore e o console para detalhes.');
+                });
+            };
+
+            // Function to schedule a single reminder
+            const scheduleReminder = (event) => {
+                const eventDateTime = new Date(`${event.date}T${event.time}`);
+                const reminderTime = new Date(eventDateTime.getTime() - event.reminderMinutesBefore * 60 * 1000);
+                const now = new Date();
+
+                if (reminderTime > now) {
+                    const delay = reminderTime.getTime() - now.getTime();
+                    console.log(`Agendando lembrete para "${event.location}" em ${delay / 1000} segundos.`);
+                    const timeoutId = setTimeout(async () => {
+                        await showCustomModal(`Lembrete: Sua apresentação em "${event.location}" começa em ${event.reminderMinutesBefore} minutos!`, false, '', 'OK');
+                        // Mark as reminded in Firestore after showing the alert
+                        try {
+                            if (firestoreEventsCollection) {
+                                await firestoreEventsCollection.doc(event.id).update({ isReminded: true });
+                                console.log(`Evento "${event.location}" marcado como lembrado no Firestore.`);
+                            }
+                        } catch (error) {
+                            console.error('Erro ao marcar evento como lembrado:', error);
+                        }
+                    }, delay);
+                    reminderTimeouts[event.id] = timeoutId; // Store timeout ID
+                } else if (eventDateTime > now && !event.isReminded) {
+                    // If reminder time has passed but event is in the future and not reminded, show immediately
+                    console.log(`Lembrete para "${event.location}" já deveria ter sido exibido. Exibindo agora.`);
+                    showCustomModal(`Lembrete: Sua apresentação em "${event.location}" começa em breve!`, false, '', 'OK');
+                    // Mark as reminded in Firestore
+                    try {
+                        if (firestoreEventsCollection) {
+                            firestoreEventsCollection.doc(event.id).update({ isReminded: true });
+                        }
+                    } catch (error) {
+                        console.error('Erro ao marcar evento como lembrado:', error);
+                    }
+                }
+            };
+
+            // Attach click listeners to delete buttons
+            const attachDeleteListeners = () => {
+                document.querySelectorAll('.delete-button').forEach(button => {
+                    button.onclick = async (e) => {
+                        const eventId = e.target.dataset.id;
+                        const confirmed = await showCustomModal('Tem certeza que deseja cancelar esta apresentação?', true, 'Sim, Cancelar', 'Não');
+                        if (confirmed) {
+                            try {
+                                if (!firestoreEventsCollection) {
+                                    showCustomModal('Erro: Coleção de eventos não inicializada. Tente novamente.');
+                                    return;
+                                }
+                                await firestoreEventsCollection.doc(eventId).delete(); // Using doc().delete()
+                                showCustomModal('Apresentação cancelada com sucesso!');
+                                // Clear reminder timeout if event is deleted
+                                if (reminderTimeouts[eventId]) {
+                                    clearTimeout(reminderTimeouts[eventId]);
+                                    delete reminderTimeouts[eventId];
+                                }
+                            } catch (error) {
+                                console.error('Erro ao cancelar evento:', error);
+                                showCustomModal('Erro ao cancelar apresentação. Tente novamente.');
+                            }
+                        }
+                    };
+                });
+            };
+
+            // Attach click listeners to "Mark as Reminded" buttons
+            const attachMarkRemindedListeners = () => {
+                document.querySelectorAll('.mark-reminded-button').forEach(button => {
+                    button.onclick = async (e) => {
+                        const eventId = e.target.dataset.id;
+                        const confirmed = await showCustomModal('Marcar este lembrete como visto?', true, 'Sim', 'Não');
+                        if (confirmed) {
+                            try {
+                                if (firestoreEventsCollection) {
+                                    await firestoreEventsCollection.doc(eventId).update({ isReminded: true });
+                                    showCustomModal('Lembrete marcado como visto!');
+                                    // Clear reminder timeout
+                                    if (reminderTimeouts[eventId]) {
+                                        clearTimeout(reminderTimeouts[eventId]);
+                                        delete reminderTimeouts[eventId];
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Erro ao marcar lembrete como visto:', error);
+                                showCustomModal('Erro ao marcar lembrete como visto. Tente novamente.');
+                            }
+                        }
+                    };
+                });
+            };
+        } // Fim de setupAppLogic
+
+        // Chama a função de inicialização do Firebase quando o DOM estiver completamente carregado
+        document.addEventListener('DOMContentLoaded', initializeFirebaseAndApp);
     </script>
 </body>
 </html>
