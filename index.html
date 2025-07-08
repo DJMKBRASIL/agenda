@@ -108,14 +108,13 @@
         </div>
     </div>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        // Import the functions you need from the SDKs you need
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, doc, deleteDoc, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+    <!-- Firebase SDKs (Traditional Loading) -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics-compat.js"></script>
 
+    <script>
         // Global variables provided by the Canvas environment (appId is still useful)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         // Using the explicit firebaseConfig provided by the user for robustness
@@ -140,17 +139,17 @@
 
         try {
             // Initialize Firebase App
-            app = initializeApp(firebaseConfig);
+            app = firebase.initializeApp(firebaseConfig); // Using firebase.initializeApp
             console.log('Firebase App inicializado com sucesso:', app);
 
             // Initialize Firebase services
-            analytics = getAnalytics(app);
+            analytics = firebase.analytics(); // Using firebase.analytics()
             console.log('Firebase Analytics inicializado com sucesso:', analytics);
 
-            auth = getAuth(app);
+            auth = firebase.auth(); // Using firebase.auth()
             console.log('Firebase Auth inicializado com sucesso:', auth);
 
-            db = getFirestore(app);
+            db = firebase.firestore(); // Using firebase.firestore()
             console.log('Firebase Firestore inicializado com sucesso:', db);
 
         } catch (error) {
@@ -229,9 +228,9 @@
                 showCustomModal('Erro interno: O serviço de autenticação não foi inicializado corretamente. Por favor, recarregue a página.');
                 return;
             }
-            const provider = new GoogleAuthProvider();
+            const provider = new firebase.auth.GoogleAuthProvider(); // Using firebase.auth.GoogleAuthProvider
             try {
-                await signInWithPopup(auth, provider);
+                await auth.signInWithPopup(provider); // Using auth.signInWithPopup
                 // Auth state change listener will handle UI updates
             } catch (error) {
                 console.error('Erro no login:', error);
@@ -249,7 +248,7 @@
         // Handle Logout
         logoutButton.addEventListener('click', async () => {
             try {
-                await signOut(auth);
+                await auth.signOut(); // Using auth.signOut()
                 // Auth state change listener will handle UI updates
             } catch (error) {
                 console.error('Erro no logout:', error);
@@ -258,7 +257,7 @@
         });
 
         // Observe authentication state changes
-        onAuthStateChanged(auth, async (user) => {
+        auth.onAuthStateChanged(async (user) => { // Using auth.onAuthStateChanged
             if (user) {
                 currentUser = user;
                 userInfo.textContent = `Olá, ${user.displayName || user.email}!`;
@@ -268,7 +267,7 @@
 
                 // Set the Firestore collection path based on the authenticated user
                 // Private data: /artifacts/{appId}/users/{userId}/{your_collection_name}
-                firestoreEventsCollection = collection(db, `artifacts/${appId}/users/${currentUser.uid}/events`);
+                firestoreEventsCollection = db.collection(`artifacts/${appId}/users/${currentUser.uid}/events`); // Using db.collection
                 currentUserIdDisplay.textContent = `Seu ID de Usuário: ${currentUser.uid}`;
                 console.log("Firestore Collection Path sendo acessado:", firestoreEventsCollection.path); // Log the path
 
@@ -316,7 +315,7 @@
                 location: eventLocationInput.value.trim(),
                 notes: eventNotesInput.value.trim(),
                 userId: currentUser.uid, // Store user ID to filter events
-                createdAt: serverTimestamp() // For ordering and tracking creation time
+                createdAt: firebase.firestore.FieldValue.serverTimestamp() // Using firebase.firestore.FieldValue.serverTimestamp()
             };
 
             // Basic validation
@@ -330,7 +329,7 @@
             }
 
             try {
-                await addDoc(firestoreEventsCollection, eventData);
+                await firestoreEventsCollection.add(eventData); // Using collection.add()
                 showCustomModal('Apresentação adicionada com sucesso!');
                 eventForm.reset(); // Clear the form
             } catch (error) {
@@ -347,13 +346,10 @@
             }
 
             // Create a query to get all events for the current user
-            const q = query(
-                firestoreEventsCollection,
-                where('userId', '==', currentUser.uid) // Ensure only current user's events are fetched
-            );
+            const q = firestoreEventsCollection.where('userId', '==', currentUser.uid); // Using collection.where()
 
             // Listen for real-time updates
-            onSnapshot(q, (snapshot) => {
+            q.onSnapshot((snapshot) => { // Using query.onSnapshot()
                 eventsContainer.innerHTML = ''; // Clear current list
                 if (snapshot.empty) {
                     eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
@@ -406,7 +402,7 @@
                                 showCustomModal('Erro: Coleção de eventos não inicializada. Tente novamente.');
                                 return;
                             }
-                            await deleteDoc(doc(firestoreEventsCollection, eventId));
+                            await firestoreEventsCollection.doc(eventId).delete(); // Using doc().delete()
                             showCustomModal('Apresentação cancelada com sucesso!');
                         } catch (error) {
                             console.error('Erro ao cancelar evento:', error);
