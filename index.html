@@ -279,7 +279,7 @@
                 authButton.classList.remove('hidden');
                 logoutButton.classList.add('hidden');
                 appContent.classList.add('hidden'); // Hide agenda content
-                eventsContainer.innerHTML = '<p class="text-center text-gray-500">Faça login para ver suas apresentações.</p>';
+                eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
                 currentUserIdDisplay.textContent = '';
                 firestoreEventsCollection = null; // Clear collection reference
             }
