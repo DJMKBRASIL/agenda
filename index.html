@@ -139,6 +139,16 @@
             let auth;
             let db;
 
+            // Adiciona um pequeno atraso para garantir que o objeto 'firebase' esteja disponível
+            // Isso é uma medida temporária para depuração e pode ser removido se resolver o problema.
+            await new Promise(resolve => setTimeout(resolve, 100)); // Atraso de 100ms
+
+            if (typeof firebase === 'undefined') {
+                console.error('Erro: O objeto global "firebase" não está disponível. Os SDKs do Firebase podem não ter sido carregados corretamente.');
+                showCustomModal('Erro crítico: Os serviços do Firebase não puderam ser carregados. Verifique sua conexão com a internet e as configurações do Firebase.');
+                return;
+            }
+
             try {
                 // Initialize Firebase App
                 app = firebase.initializeApp(firebaseConfig); // Using firebase.initializeApp
@@ -162,7 +172,7 @@
 
             // References to DOM elements
             const authButton = document.getElementById('auth-button');
-            const logoutButton = document.getElementById('logout-button');
+            const logoutButton = document = document.getElementById('logout-button');
             const userInfo = document.getElementById('user-info');
             const appContent = document.getElementById('app-content');
             const eventForm = document.getElementById('event-form');
