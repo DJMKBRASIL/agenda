@@ -194,13 +194,21 @@
 
         // Handle Google Sign-In
         authButton.addEventListener('click', async () => {
+            console.log('Botão de Login clicado!'); // Adicionado para depuração
             const provider = new GoogleAuthProvider();
             try {
                 await signInWithPopup(auth, provider);
                 // Auth state change listener will handle UI updates
             } catch (error) {
                 console.error('Erro no login:', error);
-                showCustomModal('Erro ao fazer login. Tente novamente.');
+                // Verifica se o erro é devido a pop-up bloqueado
+                if (error.code === 'auth/popup-blocked') {
+                    showCustomModal('O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups para este site e tente novamente.');
+                } else if (error.code === 'auth/popup-closed-by-user') {
+                    showCustomModal('O pop-up de login foi fechado. Tente novamente.');
+                } else {
+                    showCustomModal('Erro ao fazer login. Tente novamente. Detalhes no console.');
+                }
             }
         });
 
@@ -382,4 +390,3 @@
     </script>
 </body>
 </html>
-
