@@ -126,8 +126,8 @@
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const analytics = getAnalytics(app); // Initialize Analytics
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        const auth = getAuth(app); // Usando getAuth(app) para a sintaxe modular
+        const db = getFirestore(app); // Usando getFirestore(app) para a sintaxe modular
 
         // References to DOM elements
         const authButton = document.getElementById('auth-button');
