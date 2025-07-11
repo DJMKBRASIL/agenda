@@ -409,9 +409,24 @@
                     }
 
                     let events = [];
+                    const now = new Date(); // Get current time once for comparison
+
                     snapshot.forEach((document) => {
                         const event = document.data();
                         const eventId = document.id;
+                        const eventDateTime = new Date(`${event.date}T${event.time}`);
+
+                        // Check if event has passed
+                        if (eventDateTime < now) {
+                            console.log(`Excluindo evento passado: "${event.location}" em ${event.date} ${event.time}`);
+                            firestoreEventsCollection.doc(eventId).delete().catch(err => {
+                                console.error("Erro ao excluir evento passado:", err);
+                                showCustomModal(`Erro ao excluir evento passado: ${event.location}. Verifique as permissões do Firestore.`);
+                            });
+                            // Do not add this event to the list if it's being deleted
+                            return;
+                        }
+
                         events.push({ id: eventId, ...event });
                     });
 
