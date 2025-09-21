@@ -23,6 +23,16 @@
             appId: "1:557143303544:web:06adebeee10a15e614948d",
             measurementId: "G-DMPH9NK93H"
         };
+        
+        // --- INÍCIO: CONFIGURAÇÃO DE ACESSO COMPARTILHADO ---
+        // IMPORTANTE: Adicione aqui os e-mails que podem acessar a agenda.
+        const authorizedEmails = [
+            "djmkbrasil@gmail.com",       // E-mail principal do DJ
+            "agendadjmk@gmail.com"        // E-mail do assessor
+        ];
+        // ID único para a agenda compartilhada. Não altere este valor.
+        const SHARED_AGENDA_ID = "agenda-dj-mk-principal";
+        // --- FIM DA CONFIGURAÇÃO ---
 
         let app;
         let db;
@@ -55,7 +65,8 @@
             async signInWithGoogle() {
                 try {
                     const result = await signInWithPopup(this.auth, this.provider);
-                    console.log('✅ Login realizado:', result.user.email);
+                    // A verificação de e-mail agora é feita no componente principal da aplicação
+                    console.log('✅ Tentativa de login por:', result.user.email);
                     return result.user;
                 } catch (error) {
                     console.error('❌ Erro no login com Google:', error);
@@ -71,8 +82,7 @@
                 try {
                     await signOut(this.auth);
                     console.log('✅ Logout realizado');
-                } catch (error)
-                    {
+                } catch (error) {
                     console.error('❌ Erro no logout:', error);
                     throw error;
                 }
@@ -82,19 +92,17 @@
                 return this.auth.currentUser;
             }
 
-            // Métodos do Firestore
+            // Métodos do Firestore para a agenda compartilhada
             async getAllEvents() {
-                const user = this.getCurrentUser();
-                if (!user) throw new Error("Usuário não autenticado.");
                 try {
-                    const q = query(collection(this.db, this.collectionName), where("userId", "==", user.uid));
+                    const q = query(collection(this.db, this.collectionName), where("agendaId", "==", SHARED_AGENDA_ID));
                     const querySnapshot = await getDocs(q);
                     const events = [];
                     querySnapshot.forEach((doc) => {
                         events.push({ id: doc.id, ...doc.data() });
                     });
                     events.sort((a, b) => new Date(a.date) - new Date(b.date));
-                    console.log('📅 Eventos carregados:', events.length);
+                    console.log('📅 Eventos da agenda compartilhada carregados:', events.length);
                     return events;
                 } catch (error) {
                     console.error('❌ Erro ao carregar eventos:', error);
@@ -103,20 +111,18 @@
             }
 
             async addEvent(eventData) {
-                const user = this.getCurrentUser();
-                if (!user) throw new Error("Usuário não autenticado.");
                 try {
                     if (!eventData.date || !eventData.location) {
                         throw new Error('Data e local são obrigatórios');
                     }
                     const dataWithMeta = {
                         ...eventData,
-                        userId: user.uid, // Adiciona o ID do usuário ao evento
+                        agendaId: SHARED_AGENDA_ID, // Usa o ID compartilhado
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString()
                     };
                     const docRef = await addDoc(collection(this.db, this.collectionName), dataWithMeta);
-                    console.log('✅ Evento adicionado com ID:', docRef.id);
+                    console.log('✅ Evento adicionado à agenda compartilhada com ID:', docRef.id);
                     return { id: docRef.id, ...dataWithMeta };
                 } catch (error) {
                     console.error('❌ Erro ao adicionar evento:', error);
@@ -152,17 +158,15 @@
             }
 
             async clearAllEvents() {
-                const user = this.getCurrentUser();
-                if (!user) throw new Error("Usuário não autenticado.");
                 try {
-                    const q = query(collection(this.db, this.collectionName), where("userId", "==", user.uid));
+                    const q = query(collection(this.db, this.collectionName), where("agendaId", "==", SHARED_AGENDA_ID));
                     const querySnapshot = await getDocs(q);
                     const batch = writeBatch(this.db);
                     querySnapshot.forEach((doc) => {
                         batch.delete(doc.ref);
                     });
                     await batch.commit();
-                    console.log('🗑️ Todos os eventos do usuário foram deletados.');
+                    console.log('🗑️ Todos os eventos da agenda compartilhada foram deletados.');
                 } catch (error) {
                     console.error('❌ Erro ao limpar eventos:', error);
                     throw error;
@@ -276,7 +280,15 @@
 
             useEffect(() => {
                 const unsubscribe = window.firebaseService.onAuthChange((currentUser) => {
-                    setUser(currentUser);
+                    // Lógica de autorização
+                    if (currentUser && !authorizedEmails.includes(currentUser.email)) {
+                        console.warn(`Acesso negado para o e-mail: ${currentUser.email}`);
+                        alert('Seu e-mail não tem permissão para acessar esta agenda.');
+                        window.firebaseService.signOut(); // Desloga o usuário não autorizado
+                        setUser(null);
+                    } else {
+                        setUser(currentUser);
+                    }
                     setIsLoading(false);
                 });
                 return () => unsubscribe();
