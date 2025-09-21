@@ -10,7 +10,7 @@
     <script type="module">
         // Import the functions you need from the SDKs you need
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js';
 
@@ -79,8 +79,7 @@
 
                     const q = query(
                         collection(this.db, this.collection),
-                        where('userId', '==', user.uid),
-                        orderBy('date', 'asc')
+                        where('userId', '==', user.uid)
                     );
                     
                     const querySnapshot = await getDocs(q);
@@ -88,6 +87,9 @@
                     querySnapshot.forEach((doc) => {
                         events.push({ id: doc.id, ...doc.data() });
                     });
+                    
+                    // Ordenar por data no frontend
+                    events.sort((a, b) => new Date(a.date) - new Date(b.date));
                     
                     console.log('📅 Eventos carregados:', events.length);
                     return events;
@@ -100,20 +102,36 @@
             async addEvent(eventData) {
                 try {
                     const user = this.getCurrentUser();
-                    if (!user) throw new Error('Usuário não autenticado');
+                    if (!user) {
+                        throw new Error('Usuário não autenticado');
+                    }
+
+                    // Validar dados obrigatórios
+                    if (!eventData.date || !eventData.location) {
+                        throw new Error('Data e local são obrigatórios');
+                    }
 
                     const dataWithUser = {
-                        ...eventData,
+                        date: eventData.date,
+                        startTime: eventData.startTime || '',
+                        endTime: eventData.endTime || '',
+                        location: eventData.location,
+                        totalValue: Number(eventData.totalValue) || 0,
+                        paidValue: Number(eventData.paidValue) || 0,
+                        status: eventData.status || 'em aberto',
+                        observations: eventData.observations || '',
                         userId: user.uid,
-                        createdAt: new Date(),
-                        updatedAt: new Date()
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
                     };
 
+                    console.log('📝 Adicionando evento:', dataWithUser);
                     const docRef = await addDoc(collection(this.db, this.collection), dataWithUser);
-                    console.log('✅ Evento adicionado:', docRef.id);
+                    console.log('✅ Evento adicionado com ID:', docRef.id);
+                    
                     return { id: docRef.id, ...dataWithUser };
                 } catch (error) {
-                    console.error('❌ Erro ao adicionar evento:', error);
+                    console.error('❌ Erro detalhado ao adicionar evento:', error);
                     throw error;
                 }
             }
@@ -121,18 +139,29 @@
             async updateEvent(eventId, eventData) {
                 try {
                     const user = this.getCurrentUser();
-                    if (!user) throw new Error('Usuário não autenticado');
+                    if (!user) {
+                        throw new Error('Usuário não autenticado');
+                    }
 
                     const dataWithUpdate = {
-                        ...eventData,
-                        updatedAt: new Date()
+                        date: eventData.date,
+                        startTime: eventData.startTime || '',
+                        endTime: eventData.endTime || '',
+                        location: eventData.location,
+                        totalValue: Number(eventData.totalValue) || 0,
+                        paidValue: Number(eventData.paidValue) || 0,
+                        status: eventData.status || 'em aberto',
+                        observations: eventData.observations || '',
+                        updatedAt: new Date().toISOString()
                     };
 
+                    console.log('📝 Atualizando evento:', eventId, dataWithUpdate);
                     await updateDoc(doc(this.db, this.collection, eventId), dataWithUpdate);
                     console.log('✅ Evento atualizado:', eventId);
-                    return { id: eventId, ...dataWithUpdate };
+                    
+                    return { id: eventId, ...dataWithUpdate, userId: user.uid };
                 } catch (error) {
-                    console.error('❌ Erro ao atualizar evento:', error);
+                    console.error('❌ Erro detalhado ao atualizar evento:', error);
                     throw error;
                 }
             }
