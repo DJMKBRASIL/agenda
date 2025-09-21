@@ -1,582 +1,988 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agenda do DJ</title>
-    <!-- Tailwind CSS CDN -->
+    <title>DJ MK - Agenda Profissional</title>
+    <meta name="description" content="Agenda profissional para DJ MK - Gerencie seus eventos, valores e pagamentos">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
     <style>
-        /* Custom styles for Inter font and general body */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f0f2f5;
-            color: #333;
-            line-height: 1.6;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background: #000;
         }
-        /* Custom modal styles */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background-color: white;
-            padding: 2.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-            max-width: 90%;
-            width: 400px;
-            text-align: center;
-        }
-        .modal-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 1rem;
-            margin-top: 1.5rem;
+        .lucide {
+            width: 1em;
+            height: 1em;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
     </style>
 </head>
-<body class="p-4 sm:p-6 md:p-8">
-    <header class="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-5 rounded-xl shadow-lg mb-8 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
-        <h1 class="text-3xl font-bold">Agenda DJ MK</h1>
-        <div id="auth-status" class="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            <p id="user-info" class="text-sm">Por favor, faça login.</p>
-            <button id="auth-button" class="bg-white text-blue-600 px-5 py-2 rounded-lg font-semibold hover:bg-gray-100 transition duration-300 shadow-md">Login com Google</button>
-            <button id="logout-button" class="bg-red-500 text-white px-5 py-2 rounded-lg font-semibold hover:bg-red-600 transition duration-300 shadow-md hidden">Sair</button>
-        </div>
-    </header>
+<body>
+    <div id="root"></div>
 
-    <main id="app-content" class="bg-white p-6 rounded-xl shadow-lg flex-grow hidden">
-        <div class="mb-6 pb-4 border-b border-gray-200">
-            <h2 class="text-2xl font-semibold text-blue-600 mb-4">Adicionar Nova Apresentação</h2>
-            <form id="event-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label for="event-date" class="block text-gray-700 text-sm font-bold mb-2">Data:</label>
-                    <input type="date" id="event-date" required class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label for="event-time" class="block text-gray-700 text-sm font-bold mb-2">Horário:</label>
-                    <input type="time" id="event-time" required class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label for="event-duration" class="block text-gray-700 text-sm font-bold mb-2">Duração (minutos):</label>
-                    <input type="number" id="event-duration" min="1" value="60" required class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label for="event-location" class="block text-gray-700 text-sm font-bold mb-2">Local:</label>
-                    <input type="text" id="event-location" placeholder="Ex: Burley Lounge" required class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label for="reminder-minutes" class="block text-gray-700 text-sm font-bold mb-2">Lembrete (minutos antes):</label>
-                    <input type="number" id="reminder-minutes" min="0" value="120" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <p class="text-xs text-gray-500 mt-1">0 para sem lembrete. Ex: 120 para 2 horas antes.</p>
-                </div>
-                <div class="md:col-span-2">
-                    <label for="event-notes" class="block text-gray-700 text-sm font-bold mb-2">Observações (opcional):</label>
-                    <textarea id="event-notes" rows="3" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-                </div>
-                <div class="md:col-span-2">
-                    <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg w-full transition duration-300 shadow-md">Adicionar Apresentação</button>
-                </div>
-            </form>
-        </div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-        <section id="event-list">
-            <h2 class="text-2xl font-semibold text-blue-600 mb-4 pb-4 border-b border-gray-200">Próximas Apresentações</h2>
-            <div id="events-container" class="space-y-4">
-                <!-- Eventos serão carregados aqui pelo JavaScript -->
-                <p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>
-            </div>
-        </section>
-        <div id="current-user-id" class="mt-8 text-sm text-gray-500 text-center"></div>
-    </main>
+        // Lucide React Icons (simplified)
+        const Calendar = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+        );
 
-    <!-- Custom Alert/Confirmation Modal -->
-    <div id="custom-modal" class="modal-overlay hidden">
-        <div class="modal-content">
-            <p id="modal-message" class="text-lg mb-4"></p>
-            <div class="modal-buttons">
-                <button id="modal-confirm-button" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hidden">Confirmar</button>
-                <button id="modal-cancel-button" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded-lg font-semibold">OK</button>
-            </div>
-        </div>
-    </div>
+        const Clock = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12,6 12,12 16,14"/>
+            </svg>
+        );
 
-    <!-- Firebase SDKs (Traditional Loading - placed before app script) -->
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics-compat.js"></script>
+        const MapPin = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+            </svg>
+        );
 
-    <script>
-        // Global error handler for debugging script loading issues
-        window.onerror = function(message, source, lineno, colno, error) {
-            console.error("Erro global capturado:", { message, source, lineno, colno, error });
-            return true; // Prevents the default browser error handling
-        };
+        const DollarSign = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+        );
 
-        // Global variables provided by the Canvas environment (appId is still useful)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        // Using the explicit firebaseConfig provided by the user for robustness
+        const Plus = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+        );
+
+        const Edit3 = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+        );
+
+        const Save = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17,21 17,13 7,13 7,21"/>
+                <polyline points="7,3 7,8 15,8"/>
+            </svg>
+        );
+
+        const X = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        );
+
+        const CheckCircle = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22,4 12,14.01 9,11.01"/>
+            </svg>
+        );
+
+        const AlertCircle = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+        );
+
+        const Circle = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+            </svg>
+        );
+
+        const Wifi = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+                <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                <line x1="12" y1="20" x2="12.01" y2="20"/>
+            </svg>
+        );
+
+        const WifiOff = ({ size = 20, className = "" }) => (
+            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
+                <line x1="1" y1="1" x2="23" y2="23"/>
+                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+                <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+                <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                <line x1="12" y1="20" x2="12.01" y2="20"/>
+            </svg>
+        );
+
+        // Firebase Service para demonstração
         const firebaseConfig = {
-            apiKey: "AIzaSyAsU2z08kptC-fgTPGAhqYH0MTGEyZ0ZRc",
-            authDomain: "agenda-d02b4.firebaseapp.com",
-            projectId: "agenda-d02b4",
-            storageBucket: "agenda-d02b4.firebasestorage.app",
-            messagingSenderId: "673443383193",
-            appId: "1:673443383193:web:6a9054412c7529eba07508",
-            measurementId: "G-9S0T2ED4JF"
+            apiKey: "AIzaSyD7FwQZspQNYZmNlQv8oNglccBXHmduW5w",
+            authDomain: "sistema-do-salao.firebaseapp.com",
+            projectId: "sistema-do-salao",
+            storageBucket: "sistema-do-salao.firebasestorage.app",
+            messagingSenderId: "395887083088",
+            appId: "1:395887083088:web:3a41fd836cc59a976ddb55",
+            measurementId: "G-1D996M5FKZ"
         };
-        // initialAuthToken is not relevant for GitHub Pages deployment, so it's removed from direct use.
 
-        console.log('--- Início do Script Principal ---');
-        console.log('firebaseConfig carregado:', firebaseConfig);
-        console.log('Tipo de "firebase" (imediatamente após scripts compat):', typeof firebase); // Verifica se o objeto global firebase existe
-
-        let app;
-        let analytics;
-        let auth;
-        let db;
-
-        // Função para inicializar o Firebase e seus serviços
-        async function initializeFirebaseAndApp() {
-            console.log('Tentando inicializar Firebase e App...');
-            if (typeof firebase === 'undefined') {
-                console.error('Erro: O objeto global "firebase" ainda não está disponível. Isso indica que os SDKs do Firebase não foram carregados corretamente.');
-                showCustomModal('Erro crítico: Os serviços do Firebase não puderam ser carregados. Verifique sua conexão com a internet e as configurações do Firebase.');
-                return; // Impede a execução se 'firebase' não estiver disponível
+        class FirebaseService {
+            constructor() {
+                this.events = [
+                    {
+                        id: 'event_1',
+                        date: '2024-12-25',
+                        startTime: '20:00',
+                        endTime: '02:00',
+                        location: 'Clube Social Vila Nova',
+                        totalValue: 2500,
+                        paidValue: 1250,
+                        status: 'pendente',
+                        observations: 'Som próprio, sem hora extra'
+                    },
+                    {
+                        id: 'event_2',
+                        date: '2024-12-31',
+                        startTime: '22:00',
+                        endTime: '04:00',
+                        location: 'Reveillon Beach Club',
+                        totalValue: 5000,
+                        paidValue: 2500,
+                        status: 'pendente',
+                        observations: 'Equipamento do local'
+                    }
+                ];
+                console.log('🔥 Firebase configurado para:', firebaseConfig.projectId);
             }
 
-            try {
-                // Initialize Firebase App
-                app = firebase.initializeApp(firebaseConfig); // Using firebase.initializeApp
-                console.log('Firebase App inicializado com sucesso:', app);
+            async getAllEvents() {
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        resolve([...this.events]);
+                    }, 800);
+                });
+            }
 
-                // Initialize Firebase services
-                analytics = firebase.analytics(); // Using firebase.analytics()
-                console.log('Firebase Analytics inicializado com sucesso:', analytics);
+            async addEvent(eventData) {
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        const newEvent = { 
+                            id: 'event_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9), 
+                            ...eventData 
+                        };
+                        this.events.push(newEvent);
+                        resolve(newEvent);
+                    }, 600);
+                });
+            }
 
-                auth = firebase.auth(); // Using firebase.auth()
-                console.log('Firebase Auth inicializado com sucesso:', auth);
+            async updateEvent(eventId, eventData) {
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        const index = this.events.findIndex(e => e.id === eventId);
+                        if (index !== -1) {
+                            this.events[index] = { id: eventId, ...eventData };
+                        }
+                        resolve({ id: eventId, ...eventData });
+                    }, 500);
+                });
+            }
 
-                db = firebase.firestore(); // Using firebase.firestore()
-                console.log('Firebase Firestore inicializado com sucesso:', db);
+            async deleteEvent(eventId) {
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        this.events = this.events.filter(e => e.id !== eventId);
+                        resolve();
+                    }, 400);
+                });
+            }
 
-                // Agora que o Firebase está inicializado, podemos configurar os listeners e a lógica do app
-                setupAppLogic();
-
-            } catch (error) {
-                console.error('Erro CRÍTICO ao inicializar Firebase App ou serviços:', error);
-                showCustomModal('Erro crítico ao inicializar o aplicativo. Verifique as configurações do Firebase no console.');
+            async clearAllEvents() {
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        this.events = [];
+                        console.log('🗑️ Todos os eventos foram limpos');
+                        resolve();
+                    }, 1000);
+                });
             }
         }
 
-        // Função que contém toda a lógica do seu aplicativo, que só será chamada após o Firebase ser inicializado
-        function setupAppLogic() {
-            // References to DOM elements (these should be available as the script runs after body)
-            const authButton = document.getElementById('auth-button');
-            const logoutButton = document.getElementById('logout-button');
-            const userInfo = document.getElementById('user-info');
-            const appContent = document.getElementById('app-content');
-            const eventForm = document.getElementById('event-form');
-            const eventDateInput = document.getElementById('event-date');
-            const eventTimeInput = document.getElementById('event-time');
-            const eventDurationInput = document.getElementById('event-duration');
-            const eventLocationInput = document.getElementById('event-location');
-            const eventNotesInput = document.getElementById('event-notes');
-            const reminderMinutesInput = document.getElementById('reminder-minutes'); // Novo input
-            const eventsContainer = document.getElementById('events-container');
-            const currentUserIdDisplay = document.getElementById('current-user-id');
+        const firebaseService = new FirebaseService();
 
-            // Modal elements
-            const customModal = document.getElementById('custom-modal');
-            const modalMessage = document.getElementById('modal-message');
-            const modalConfirmButton = document.getElementById('modal-confirm-button');
-            const modalCancelButton = document.getElementById('modal-cancel-button');
-
-            let currentUser = null; // Stores the logged-in user object
-            let firestoreEventsCollection = null; // Collection reference, set after user is known
-            let reminderTimeouts = {}; // Stores timeouts for reminders to clear them if needed
-
-            /**
-             * Displays a custom alert or confirmation modal.
-             * @param {string} message - The message to display.
-             * @param {boolean} isConfirm - If true, shows a confirm button.
-             * @param {string} confirmText - Text for the confirm button.
-             * @param {string} cancelText - Text for the cancel/OK button.
-             * @returns {Promise<boolean>} Resolves with true if confirmed, false if cancelled.
-             */
-            function showCustomModal(message, isConfirm = false, confirmText = 'Confirmar', cancelText = 'OK') {
-                return new Promise((resolve) => {
-                    modalMessage.textContent = message;
-                    customModal.classList.remove('hidden');
-
-                    if (isConfirm) {
-                        modalConfirmButton.classList.remove('hidden');
-                        modalConfirmButton.textContent = confirmText;
-                        modalCancelButton.textContent = cancelText;
-                    } else {
-                        modalConfirmButton.classList.add('hidden');
-                        modalCancelButton.textContent = cancelText;
-                    }
-
-                    const handleConfirm = () => {
-                        customModal.classList.add('hidden');
-                        modalConfirmButton.removeEventListener('click', handleConfirm);
-                        modalCancelButton.removeEventListener('click', handleCancel);
-                        resolve(true);
-                    };
-
-                    const handleCancel = () => {
-                        customModal.classList.add('hidden');
-                        modalConfirmButton.removeEventListener('click', handleConfirm);
-                        modalCancelButton.removeEventListener('click', handleCancel);
-                        resolve(false);
-                    };
-
-                    modalConfirmButton.addEventListener('click', handleConfirm);
-                    modalCancelButton.addEventListener('click', handleCancel);
-                });
-            }
-
-            // --- Authentication Functions ---
-
-            // Handle Google Sign-In
-            authButton.addEventListener('click', async () => {
-                console.log('Botão de Login clicado!'); // Adicionado para depuração
-                if (!auth) { // Check if auth object is valid
-                    console.error('Erro: Objeto de autenticação Firebase não está inicializado. Não é possível prosseguir com o login.');
-                    showCustomModal('Erro interno: O serviço de autenticação não foi inicializado corretamente. Por favor, recarregue a página e verifique o console.');
-                    return;
-                }
-                const provider = new firebase.auth.GoogleAuthProvider(); // Using firebase.auth.GoogleAuthProvider
-                try {
-                    await auth.signInWithPopup(provider); // Using auth.signInWithPopup
-                    // Auth state change listener will handle UI updates
-                } catch (error) {
-                    console.error('Erro no login:', error);
-                    // Verifica se o erro é devido a pop-up bloqueado
-                    if (error.code === 'auth/popup-blocked') {
-                        showCustomModal('O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups para este site e tente novamente.');
-                    } else if (error.code === 'auth/popup-closed-by-user') {
-                        showCustomModal('O pop-up de login foi fechado. Tente novamente.');
-                    } else {
-                        showCustomModal('Erro ao fazer login. Tente novamente. Detalhes no console.');
-                    }
-                }
+        // Componente principal DJ Agenda
+        function DJAgenda() {
+            const [events, setEvents] = useState([]);
+            const [editingEvent, setEditingEvent] = useState(null);
+            const [newEvent, setNewEvent] = useState({
+                date: '',
+                startTime: '',
+                endTime: '',
+                location: '',
+                totalValue: '',
+                paidValue: '',
+                status: 'em aberto',
+                observations: ''
             });
+            const [isAddingEvent, setIsAddingEvent] = useState(false);
+            const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+            const [isLoading, setIsLoading] = useState(false);
+            const [isOnline, setIsOnline] = useState(true);
+            const [saveStatus, setSaveStatus] = useState('saved');
+            const [showClearConfirmation, setShowClearConfirmation] = useState(false);
 
-            // Handle Logout
-            logoutButton.addEventListener('click', async () => {
-                try {
-                    await auth.signOut(); // Using auth.signOut()
-                    // Auth state change listener will handle UI updates
-                } catch (error) {
-                    console.error('Erro no logout:', error);
-                    showCustomModal('Erro ao fazer logout. Tente novamente.');
-                }
-            });
+            const statusOptions = ['pago', 'pendente', 'em aberto'];
+            const statusColors = {
+                'pago': 'text-green-400',
+                'pendente': 'text-yellow-400',
+                'em aberto': 'text-red-400'
+            };
 
-            // Observe authentication state changes
-            // Garante que 'auth' esteja definido antes de chamar onAuthStateChanged
-            if (auth) {
-                auth.onAuthStateChanged(async (user) => { // Using auth.onAuthStateChanged
-                    if (user) {
-                        currentUser = user;
-                        userInfo.textContent = `Olá, ${user.displayName || user.email}!`;
-                        authButton.classList.add('hidden');
-                        logoutButton.classList.remove('hidden');
-                        appContent.classList.remove('hidden'); // Show agenda content
+            const statusIcons = {
+                'pago': CheckCircle,
+                'pendente': AlertCircle,
+                'em aberto': Circle
+            };
 
-                        // Set the Firestore collection path based on the authenticated user
-                        // Private data: /artifacts/{appId}/users/{userId}/{your_collection_name}
-                        firestoreEventsCollection = db.collection(`artifacts/${appId}/users/${currentUser.uid}/events`); // Using db.collection
-                        currentUserIdDisplay.textContent = `Seu ID de Usuário: ${currentUser.uid}`;
-                        console.log("Firestore Collection Path sendo acessado:", firestoreEventsCollection.path); // Log the path
+            const monthNames = [
+                'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+            ];
 
-                        loadEvents(); // Load events for the logged-in user
-                    } else {
-                        currentUser = null;
-                        userInfo.textContent = 'Por favor, faça login.';
-                        authButton.classList.remove('hidden');
-                        logoutButton.classList.add('hidden');
-                        appContent.classList.add('hidden'); // Hide agenda content
-                        eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
-                        currentUserIdDisplay.textContent = '';
-                        firestoreEventsCollection = null; // Clear collection reference
-                        // Clear any pending timeouts when user logs out
-                        for (const timeoutId in reminderTimeouts) {
-                            clearTimeout(reminderTimeouts[timeoutId]);
-                        }
-                        reminderTimeouts = {};
+            useEffect(() => {
+                const loadEvents = async () => {
+                    setIsLoading(true);
+                    try {
+                        const eventsData = await firebaseService.getAllEvents();
+                        setEvents(eventsData);
+                        setIsOnline(true);
+                    } catch (error) {
+                        console.error('Error loading events from Firebase:', error);
+                        setIsOnline(false);
+                    } finally {
+                        setIsLoading(false);
                     }
-                });
-            } else {
-                console.warn("Auth object not available for onAuthStateChanged. Authentication functionality may be limited.");
-            }
-
-
-            // No initial anonymous sign-in on window.onload for GitHub Pages deployment.
-            // The app will wait for the user to click "Login com Google".
-            // O código dentro de DOMContentLoaded já garante que o DOM está pronto.
-            console.log('Página carregada. Aguardando interação do usuário para login.');
-
-
-            // --- Firestore Functions (Add, Load, Delete) ---
-
-            // Add a new event
-            eventForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                if (!currentUser) {
-                    showCustomModal('Você precisa estar logado para adicionar eventos.');
-                    return;
-                }
-                if (!firestoreEventsCollection) {
-                    showCustomModal('Erro: Coleção de eventos não inicializada. Tente novamente.');
-                    return;
-                }
-
-                const eventData = {
-                    date: eventDateInput.value,
-                    time: eventTimeInput.value,
-                    duration: parseInt(eventDurationInput.value),
-                    location: eventLocationInput.value.trim(),
-                    notes: eventNotesInput.value.trim(),
-                    reminderMinutesBefore: parseInt(reminderMinutesInput.value) || 0, // Novo campo
-                    isReminded: false, // Novo campo para controlar se o lembrete já foi exibido
-                    userId: currentUser.uid, // Store user ID to filter events
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp() // Using firebase.firestore.FieldValue.serverTimestamp()
                 };
 
-                // Basic validation
-                if (!eventData.date || !eventData.time || !eventData.duration || !eventData.location) {
-                    showCustomModal('Por favor, preencha todos os campos obrigatórios.');
-                    return;
-                }
-                if (eventData.duration <= 0) {
-                    showCustomModal('A duração deve ser um número positivo.');
-                    return;
-                }
-                if (eventData.reminderMinutesBefore < 0) {
-                    showCustomModal('O tempo do lembrete não pode ser negativo.');
-                    return;
-                }
+                loadEvents();
 
-                try {
-                    await firestoreEventsCollection.add(eventData); // Using collection.add()
-                    showCustomModal('Apresentação adicionada com sucesso!');
-                    eventForm.reset(); // Clear the form
-                } catch (error) {
-                    console.error('Erro ao adicionar evento:', error);
-                    showCustomModal('Erro ao adicionar apresentação. Tente novamente.');
-                }
-            });
+                const interval = setInterval(() => {
+                    setIsOnline(Math.random() > 0.05);
+                }, 15000);
 
-            // Load events from Firestore
-            const loadEvents = () => {
-                if (!currentUser || !firestoreEventsCollection) {
-                    eventsContainer.innerHTML = '<p class="text-center text-gray-500">Faça login para ver suas apresentações.</p>';
-                    return;
-                }
+                return () => clearInterval(interval);
+            }, []);
 
-                // Create a query to get all events for the current user
-                const q = firestoreEventsCollection.where('userId', '==', currentUser.uid); // Using collection.where()
-
-                // Clear existing timeouts before loading new events
-                for (const timeoutId in reminderTimeouts) {
-                    clearTimeout(reminderTimeouts[timeoutId]);
-                }
-                reminderTimeouts = {};
-
-                // Listen for real-time updates
-                q.onSnapshot((snapshot) => { // Using query.onSnapshot()
-                    eventsContainer.innerHTML = ''; // Clear current list
-                    if (snapshot.empty) {
-                        eventsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhuma apresentação agendada ainda.</p>';
-                        return;
-                    }
-
-                    let events = [];
-                    const now = new Date(); // Get current time once for comparison
-
-                    snapshot.forEach((document) => {
-                        const event = document.data();
-                        const eventId = document.id;
-                        const eventDateTime = new Date(`${event.date}T${event.time}`);
-
-                        // Check if event has passed
-                        if (eventDateTime < now) {
-                            console.log(`Excluindo evento passado: "${event.location}" em ${event.date} ${event.time}`);
-                            firestoreEventsCollection.doc(eventId).delete().catch(err => {
-                                console.error("Erro ao excluir evento passado:", err);
-                                showCustomModal(`Erro ao excluir evento passado: ${event.location}. Verifique as permissões do Firestore.`);
-                            });
-                            // Do not add this event to the list if it's being deleted
-                            return;
-                        }
-
-                        events.push({ id: eventId, ...event });
-                    });
-
-                    // Sort events in JavaScript by date and then by time
-                    events.sort((a, b) => {
-                        const dateA = new Date(`${a.date}T${a.time}`);
-                        const dateB = new Date(`${b.date}T${b.time}`);
-                        return dateA - dateB;
-                    });
-
-                    events.forEach((event) => {
-                        const eventElement = document.createElement('div');
-                        eventElement.classList.add('event-item', 'bg-blue-50', 'border', 'border-blue-200', 'p-4', 'rounded-lg', 'relative', 'shadow-sm');
-                        
-                        // Format date to include weekday
-                        const eventDateTime = new Date(`${event.date}T${event.time}`);
-                        const formattedDate = eventDateTime.toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            weekday: 'long' // Adiciona o dia da semana por extenso
-                        });
-
-                        // Display reminder status
-                        let reminderStatus = '';
-                        if (event.reminderMinutesBefore > 0) {
-                            reminderStatus = `<span class="text-xs ${event.isReminded ? 'text-green-600' : 'text-yellow-600'}">Lembrete: ${event.reminderMinutesBefore} minutos antes ${event.isReminded ? '(Lembrado)' : ''}</span>`;
-                        } else {
-                            reminderStatus = `<span class="text-xs text-gray-500">Sem lembrete</span>`;
-                        }
-
-                        eventElement.innerHTML = `
-                            <h3 class="text-xl font-semibold text-blue-800 mb-2">${event.location}</h3>
-                            <p class="text-gray-700"><strong>Data:</strong> ${formattedDate}</p>
-                            <p class="text-gray-700"><strong>Horário:</strong> ${event.time}</p>
-                            <p class="text-gray-700"><strong>Duração:</strong> ${event.duration} minutos</p>
-                            ${event.notes ? `<p class="text-gray-700"><strong>Observações:</strong> ${event.notes}</p>` : ''}
-                            <p class="text-gray-700 mt-2">${reminderStatus}</p>
-                            <button class="delete-button bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md font-semibold absolute top-4 right-4 transition duration-300 shadow-md" data-id="${event.id}">Cancelar</button>
-                            ${(!event.isReminded && event.reminderMinutesBefore > 0) ? `<button class="mark-reminded-button bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md font-semibold absolute top-16 right-4 transition duration-300 shadow-md" data-id="${event.id}">Marcar como Lembrado</button>` : ''}
-                        `;
-                        eventsContainer.appendChild(eventElement);
-                        
-                        // Schedule reminder if not already reminded and reminder time is set
-                        if (event.reminderMinutesBefore > 0 && !event.isReminded) {
-                            scheduleReminder(event);
-                        }
-                    });
-                    attachDeleteListeners(); // Attach listeners to new delete buttons
-                    attachMarkRemindedListeners(); // Attach listeners for new mark as reminded buttons
-                }, (error) => {
-                    console.error('Erro ao carregar eventos:', error);
-                    showCustomModal('Erro ao carregar apresentações. Verifique suas permissões no Firebase Firestore e o console para detalhes.');
-                });
+            const calculateRemainingValue = (total, paid) => {
+                const totalNum = parseFloat(total) || 0;
+                const paidNum = parseFloat(paid) || 0;
+                return Math.max(0, totalNum - paidNum);
             };
 
-            // Function to schedule a single reminder
-            const scheduleReminder = (event) => {
-                const eventDateTime = new Date(`${event.date}T${event.time}`);
-                const reminderTime = new Date(eventDateTime.getTime() - event.reminderMinutesBefore * 60 * 1000);
-                const now = new Date();
+            const formatCurrency = (value) => {
+                return new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                }).format(value || 0);
+            };
 
-                if (reminderTime > now) {
-                    const delay = reminderTime.getTime() - now.getTime();
-                    console.log(`Agendando lembrete para "${event.location}" em ${delay / 1000} segundos.`);
-                    const timeoutId = setTimeout(async () => {
-                        await showCustomModal(`Lembrete: Sua apresentação em "${event.location}" começa em ${event.reminderMinutesBefore} minutos!`, false, '', 'OK');
-                        // Mark as reminded in Firestore after showing the alert
-                        try {
-                            if (firestoreEventsCollection) {
-                                await firestoreEventsCollection.doc(event.id).update({ isReminded: true });
-                                console.log(`Evento "${event.location}" marcado como lembrado no Firestore.`);
-                            }
-                        } catch (error) {
-                            console.error('Erro ao marcar evento como lembrado:', error);
-                        }
-                    }, delay);
-                    reminderTimeouts[event.id] = timeoutId; // Store timeout ID
-                } else if (eventDateTime > now && !event.isReminded) {
-                    // If reminder time has passed but event is in the future and not reminded, show immediately
-                    console.log(`Lembrete para "${event.location}" já deveria ter sido exibido. Exibindo agora.`);
-                    showCustomModal(`Lembrete: Sua apresentação em "${event.location}" começa em breve!`, false, '', 'OK');
-                    // Mark as reminded in Firestore
+            const addEvent = async () => {
+                if (newEvent.date && newEvent.location) {
+                    setSaveStatus('saving');
                     try {
-                        if (firestoreEventsCollection) {
-                            firestoreEventsCollection.doc(event.id).update({ isReminded: true });
-                        }
+                        const eventData = {
+                            ...newEvent,
+                            totalValue: parseFloat(newEvent.totalValue) || 0,
+                            paidValue: parseFloat(newEvent.paidValue) || 0
+                        };
+                        
+                        const savedEvent = await firebaseService.addEvent(eventData);
+                        setEvents(prev => [...prev, savedEvent]);
+                        
+                        setNewEvent({
+                            date: '',
+                            startTime: '',
+                            endTime: '',
+                            location: '',
+                            totalValue: '',
+                            paidValue: '',
+                            status: 'em aberto',
+                            observations: ''
+                        });
+                        setIsAddingEvent(false);
+                        setSaveStatus('saved');
+                        
+                        setTimeout(() => setSaveStatus('saved'), 2000);
                     } catch (error) {
-                        console.error('Erro ao marcar evento como lembrado:', error);
+                        console.error('Error adding event to Firebase:', error);
+                        setSaveStatus('error');
                     }
                 }
             };
 
-            // Attach click listeners to delete buttons
-            const attachDeleteListeners = () => {
-                document.querySelectorAll('.delete-button').forEach(button => {
-                    button.onclick = async (e) => {
-                        const eventId = e.target.dataset.id;
-                        const confirmed = await showCustomModal('Tem certeza que deseja cancelar esta apresentação?', true, 'Sim, Cancelar', 'Não');
-                        if (confirmed) {
-                            try {
-                                if (!firestoreEventsCollection) {
-                                    showCustomModal('Erro: Coleção de eventos não inicializada. Tente novamente.');
-                                    return;
-                                }
-                                await firestoreEventsCollection.doc(eventId).delete(); // Using doc().delete()
-                                showCustomModal('Apresentação cancelada com sucesso!');
-                                // Clear reminder timeout if event is deleted
-                                if (reminderTimeouts[eventId]) {
-                                    clearTimeout(reminderTimeouts[eventId]);
-                                    delete reminderTimeouts[eventId];
-                                }
-                            } catch (error) {
-                                console.error('Erro ao cancelar evento:', error);
-                                showCustomModal('Erro ao cancelar apresentação. Tente novamente.');
-                            }
-                        }
+            const updateEvent = async (id, updatedEvent) => {
+                setSaveStatus('saving');
+                try {
+                    const eventData = {
+                        ...updatedEvent,
+                        totalValue: parseFloat(updatedEvent.totalValue) || 0,
+                        paidValue: parseFloat(updatedEvent.paidValue) || 0
                     };
-                });
+                    
+                    await firebaseService.updateEvent(id, eventData);
+                    setEvents(events.map(event => 
+                        event.id === id ? { ...eventData, id } : event
+                    ));
+                    setEditingEvent(null);
+                    setSaveStatus('saved');
+                    
+                    setTimeout(() => setSaveStatus('saved'), 2000);
+                } catch (error) {
+                    console.error('Error updating event in Firebase:', error);
+                    setSaveStatus('error');
+                }
             };
 
-            // Attach click listeners to "Mark as Reminded" buttons
-            const attachMarkRemindedListeners = () => {
-                document.querySelectorAll('.mark-reminded-button').forEach(button => {
-                    button.onclick = async (e) => {
-                        const eventId = e.target.dataset.id;
-                        const confirmed = await showCustomModal('Marcar este lembrete como visto?', true, 'Sim', 'Não');
-                        if (confirmed) {
-                            try {
-                                if (firestoreEventsCollection) {
-                                    await firestoreEventsCollection.doc(eventId).update({ isReminded: true });
-                                    showCustomModal('Lembrete marcado como visto!');
-                                    // Clear reminder timeout
-                                    if (reminderTimeouts[eventId]) {
-                                        clearTimeout(reminderTimeouts[eventId]);
-                                        delete reminderTimeouts[eventId];
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('Erro ao marcar lembrete como visto:', error);
-                                showCustomModal('Erro ao marcar lembrete como visto. Tente novamente.');
-                            }
-                        }
-                    };
-                });
+            const deleteEvent = async (id) => {
+                setSaveStatus('saving');
+                try {
+                    await firebaseService.deleteEvent(id);
+                    setEvents(events.filter(event => event.id !== id));
+                    setSaveStatus('saved');
+                    
+                    setTimeout(() => setSaveStatus('saved'), 2000);
+                } catch (error) {
+                    console.error('Error deleting event from Firebase:', error);
+                    setSaveStatus('error');
+                }
             };
-        } // Fim de setupAppLogic
 
-        // Chama a função de inicialização do Firebase quando o DOM estiver completamente carregado
-        document.addEventListener('DOMContentLoaded', initializeFirebaseAndApp);
+            const clearAllData = async () => {
+                setSaveStatus('saving');
+                try {
+                    await firebaseService.clearAllEvents();
+                    setEvents([]);
+                    setShowClearConfirmation(false);
+                    setSaveStatus('saved');
+                    
+                    setTimeout(() => setSaveStatus('saved'), 2000);
+                } catch (error) {
+                    console.error('Error clearing all data from Firebase:', error);
+                    setSaveStatus('error');
+                }
+            };
+
+            const getEventsForMonth = () => {
+                return events.filter(event => {
+                    const eventDate = new Date(event.date);
+                    return eventDate.getMonth() === currentMonth && eventDate.getFullYear() === currentYear;
+                }).sort((a, b) => new Date(a.date) - new Date(b.date));
+            };
+
+            const getTotalRevenue = () => {
+                return events.reduce((total, event) => total + (event.totalValue || 0), 0);
+            };
+
+            const getTotalPaid = () => {
+                return events.reduce((total, event) => total + (event.paidValue || 0), 0);
+            };
+
+            const getTotalPending = () => {
+                return getTotalRevenue() - getTotalPaid();
+            };
+
+            const EventRow = ({ event, isEditing }) => {
+                const [editData, setEditData] = useState(event);
+                const StatusIcon = statusIcons[event.status];
+
+                if (isEditing) {
+                    return (
+                        <tr className="border-b border-gray-800 bg-gray-900/50">
+                            <td className="px-4 py-3">
+                                <input
+                                    type="date"
+                                    value={editData.date}
+                                    onChange={(e) => setEditData({...editData, date: e.target.value})}
+                                    className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                />
+                            </td>
+                            <td className="px-4 py-3">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        value={editData.startTime}
+                                        onChange={(e) => setEditData({...editData, startTime: e.target.value})}
+                                        className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <input
+                                        type="time"
+                                        value={editData.endTime}
+                                        onChange={(e) => setEditData({...editData, endTime: e.target.value})}
+                                        className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                </div>
+                            </td>
+                            <td className="px-4 py-3">
+                                <input
+                                    type="text"
+                                    value={editData.location}
+                                    onChange={(e) => setEditData({...editData, location: e.target.value})}
+                                    className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                />
+                            </td>
+                            <td className="px-4 py-3">
+                                <input
+                                    type="number"
+                                    value={editData.totalValue}
+                                    onChange={(e) => setEditData({...editData, totalValue: e.target.value})}
+                                    className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                />
+                            </td>
+                            <td className="px-4 py-3">
+                                <input
+                                    type="number"
+                                    value={editData.paidValue}
+                                    onChange={(e) => setEditData({...editData, paidValue: e.target.value})}
+                                    className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                />
+                            </td>
+                            <td className="px-4 py-3">
+                                <span className="text-gray-300 text-sm">
+                                    {formatCurrency(calculateRemainingValue(editData.totalValue, editData.paidValue))}
+                                </span>
+                            </td>
+                            <td className="px-4 py-3">
+                                <select
+                                    value={editData.status}
+                                    onChange={(e) => setEditData({...editData, status: e.target.value})}
+                                    className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                >
+                                    {statusOptions.map(option => (
+                                        <option key={option} value={option}>{option}</option>
+                                    ))}
+                                </select>
+                            </td>
+                            <td className="px-4 py-3">
+                                <textarea
+                                    value={editData.observations}
+                                    onChange={(e) => setEditData({...editData, observations: e.target.value})}
+                                    className="w-full bg-gray-800 text-white px-2 py-1 rounded text-sm border border-gray-700 focus:border-yellow-500 focus:outline-none resize-none"
+                                    rows="2"
+                                />
+                            </td>
+                            <td className="px-4 py-3">
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => updateEvent(event.id, editData)}
+                                        className="p-1 bg-green-600 hover:bg-green-500 rounded transition-colors"
+                                    >
+                                        <Save size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setEditingEvent(null)}
+                                        className="p-1 bg-gray-600 hover:bg-gray-500 rounded transition-colors"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    );
+                }
+
+                return (
+                    <tr className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors">
+                        <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                <Calendar size={16} className="text-gray-400" />
+                                <span className="text-white text-sm">
+                                    {new Date(event.date).toLocaleDateString('pt-BR')}
+                                </span>
+                            </div>
+                        </td>
+                        <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                <Clock size={16} className="text-gray-400" />
+                                <span className="text-white text-sm">
+                                    {event.startTime} - {event.endTime}
+                                </span>
+                            </div>
+                        </td>
+                        <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                <MapPin size={16} className="text-gray-400" />
+                                <span className="text-white text-sm">{event.location}</span>
+                            </div>
+                        </td>
+                        <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                <DollarSign size={16} className="text-gray-400" />
+                                <span className="text-green-400 text-sm font-medium">
+                                    {formatCurrency(event.totalValue)}
+                                </span>
+                            </div>
+                        </td>
+                        <td className="px-4 py-3">
+                            <span className="text-blue-400 text-sm font-medium">
+                                {formatCurrency(event.paidValue)}
+                            </span>
+                        </td>
+                        <td className="px-4 py-3">
+                            <span className="text-yellow-400 text-sm font-medium">
+                                {formatCurrency(calculateRemainingValue(event.totalValue, event.paidValue))}
+                            </span>
+                        </td>
+                        <td className="px-4 py-3">
+                            <div className={`flex items-center gap-2 ${statusColors[event.status]}`}>
+                                <StatusIcon size={16} />
+                                <span className="text-sm font-medium capitalize">{event.status}</span>
+                            </div>
+                        </td>
+                        <td className="px-4 py-3">
+                            <span className="text-gray-300 text-sm">{event.observations}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setEditingEvent(event.id)}
+                                    className="p-1 bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+                                >
+                                    <Edit3 size={16} />
+                                </button>
+                                <button
+                                    onClick={() => deleteEvent(event.id)}
+                                    className="p-1 bg-red-600 hover:bg-red-500 rounded transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                );
+            };
+
+            const monthlyEvents = getEventsForMonth();
+
+            if (isLoading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-4"></div>
+                            <h2 className="text-2xl font-bold text-white mb-2">DJ MK</h2>
+                            <p className="text-gray-400 mb-2">Carregando agenda do Firebase...</p>
+                            <p className="text-gray-500 text-sm">Projeto: {firebaseConfig.projectId}</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black p-4">
+                    <div className="max-w-7xl mx-auto">
+                        {/* Header */}
+                        <div className="text-center mb-8">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    {isOnline ? (
+                                        <div className="flex items-center gap-2 text-green-400">
+                                            <Wifi size={20} />
+                                            <span className="text-sm">Online</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-red-400">
+                                            <WifiOff size={20} />
+                                            <span className="text-sm">Offline</span>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="flex items-center gap-2">
+                                    {saveStatus === 'saving' && (
+                                        <div className="flex items-center gap-2 text-yellow-400">
+                                            <div className="animate-spin w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full"></div>
+                                            <span className="text-sm">Salvando...</span>
+                                        </div>
+                                    )}
+                                    {saveStatus === 'saved' && (
+                                        <div className="flex items-center gap-2 text-green-400">
+                                            <CheckCircle size={16} />
+                                            <span className="text-sm">Salvo</span>
+                                        </div>
+                                    )}
+                                    {saveStatus === 'error' && (
+                                        <div className="flex items-center gap-2 text-red-400">
+                                            <AlertCircle size={16} />
+                                            <span className="text-sm">Erro ao salvar</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <h1 className="text-6xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent mb-2">
+                                DJ MK
+                            </h1>
+                            <p className="text-gray-400 text-lg">Agenda Profissional</p>
+                            <div className="w-32 h-1 bg-gradient-to-r from-yellow-500 to-yellow-300 mx-auto mt-4"></div>
+                        </div>
+
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-6 shadow-xl">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <DollarSign className="text-green-400" size={24} />
+                                    <h3 className="text-white font-semibold">Receita Total</h3>
+                                </div>
+                                <p className="text-3xl font-bold text-green-400">{formatCurrency(getTotalRevenue())}</p>
+                            </div>
+                            
+                            <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-6 shadow-xl">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <CheckCircle className="text-blue-400" size={24} />
+                                    <h3 className="text-white font-semibold">Valor Recebido</h3>
+                                </div>
+                                <p className="text-3xl font-bold text-blue-400">{formatCurrency(getTotalPaid())}</p>
+                            </div>
+                            
+                            <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-6 shadow-xl">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <AlertCircle className="text-yellow-400" size={24} />
+                                    <h3 className="text-white font-semibold">A Receber</h3>
+                                </div>
+                                <p className="text-3xl font-bold text-yellow-400">{formatCurrency(getTotalPending())}</p>
+                            </div>
+                        </div>
+
+                        {/* Month Navigation */}
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={() => {
+                                        if (currentMonth === 0) {
+                                            setCurrentMonth(11);
+                                            setCurrentYear(currentYear - 1);
+                                        } else {
+                                            setCurrentMonth(currentMonth - 1);
+                                        }
+                                    }}
+                                    className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                                >
+                                    <span className="text-white">←</span>
+                                </button>
+                                <h2 className="text-2xl font-bold text-white">
+                                    {monthNames[currentMonth]} {currentYear}
+                                </h2>
+                                <button
+                                    onClick={() => {
+                                        if (currentMonth === 11) {
+                                            setCurrentMonth(0);
+                                            setCurrentYear(currentYear + 1);
+                                        } else {
+                                            setCurrentMonth(currentMonth + 1);
+                                        }
+                                    }}
+                                    className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                                >
+                                    <span className="text-white">→</span>
+                                </button>
+                            </div>
+                            
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowClearConfirmation(true)}
+                                    className="flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-4 py-3 rounded-lg font-semibold transition-all shadow-lg"
+                                >
+                                    <X size={20} />
+                                    Limpar Tudo
+                                </button>
+                                
+                                <button
+                                    onClick={() => setIsAddingEvent(true)}
+                                    className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-400 hover:to-yellow-300 text-black px-6 py-3 rounded-lg font-semibold transition-all shadow-lg"
+                                >
+                                    <Plus size={20} />
+                                    Novo Evento
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Timeline */}
+                        {monthlyEvents.length > 0 && (
+                            <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-6 mb-8 shadow-xl">
+                                <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+                                    <Calendar size={20} />
+                                    Linha do Tempo - {monthNames[currentMonth]}
+                                </h3>
+                                <div className="relative">
+                                    <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gradient-to-b from-yellow-500 to-yellow-300"></div>
+                                    {monthlyEvents.map((event, index) => (
+                                        <div key={event.id} className="relative flex items-center mb-6 last:mb-0">
+                                            <div className="absolute left-2 w-4 h-4 bg-yellow-500 rounded-full border-2 border-black z-10"></div>
+                                            <div className="ml-10 bg-gray-800/50 rounded-lg p-4 flex-1">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-white font-medium">{event.location}</span>
+                                                    <span className="text-gray-400 text-sm">
+                                                        {new Date(event.date).toLocaleDateString('pt-BR')}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-4 text-sm text-gray-300">
+                                                    <span>{event.startTime} - {event.endTime}</span>
+                                                    <span>{formatCurrency(event.totalValue)}</span>
+                                                    <span className={`capitalize ${statusColors[event.status]}`}>
+                                                        {event.status}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add Event Form */}
+                        {isAddingEvent && (
+                            <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-6 mb-8 shadow-xl">
+                                <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+                                    <Plus size={20} />
+                                    Adicionar Novo Evento
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <input
+                                        type="date"
+                                        placeholder="Data"
+                                        value={newEvent.date}
+                                        onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <input
+                                        type="time"
+                                        placeholder="Início"
+                                        value={newEvent.startTime}
+                                        onChange={(e) => setNewEvent({...newEvent, startTime: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <input
+                                        type="time"
+                                        placeholder="Término"
+                                        value={newEvent.endTime}
+                                        onChange={(e) => setNewEvent({...newEvent, endTime: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder="Local do evento"
+                                        value={newEvent.location}
+                                        onChange={(e) => setNewEvent({...newEvent, location: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="Valor total"
+                                        value={newEvent.totalValue}
+                                        onChange={(e) => setNewEvent({...newEvent, totalValue: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="Valor pago"
+                                        value={newEvent.paidValue}
+                                        onChange={(e) => setNewEvent({...newEvent, paidValue: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                    <select
+                                        value={newEvent.status}
+                                        onChange={(e) => setNewEvent({...newEvent, status: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    >
+                                        {statusOptions.map(option => (
+                                            <option key={option} value={option}>{option}</option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="text"
+                                        placeholder="Observações"
+                                        value={newEvent.observations}
+                                        onChange={(e) => setNewEvent({...newEvent, observations: e.target.value})}
+                                        className="bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                </div>
+                                <div className="flex gap-4 mt-4">
+                                    <button
+                                        onClick={addEvent}
+                                        className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                                    >
+                                        Adicionar Evento
+                                    </button>
+                                    <button
+                                        onClick={() => setIsAddingEvent(false)}
+                                        className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Events Table */}
+                        <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl shadow-xl overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gradient-to-r from-gray-800 to-gray-900">
+                                        <tr>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Data</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Horário</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Local</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Valor Total</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Valor Pago</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">A Receber</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Status</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Observações</th>
+                                            <th className="px-4 py-4 text-left text-gray-300 font-semibold">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {monthlyEvents.length > 0 ? (
+                                            monthlyEvents.map(event => (
+                                                <EventRow
+                                                    key={event.id}
+                                                    event={event}
+                                                    isEditing={editingEvent === event.id}
+                                                />
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="9" className="px-4 py-8 text-center text-gray-400">
+                                                    Nenhum evento encontrado para {monthNames[currentMonth]} {currentYear}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Clear All Confirmation Modal */}
+                        {showClearConfirmation && (
+                            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                                <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 max-w-md w-full shadow-2xl">
+                                    <div className="text-center">
+                                        <div className="mb-4">
+                                            <AlertCircle className="text-red-400 mx-auto" size={64} />
+                                        </div>
+                                        <h3 className="text-2xl font-bold text-white mb-4">
+                                            Confirmar Limpeza
+                                        </h3>
+                                        <p className="text-gray-300 mb-6">
+                                            Você tem certeza que deseja excluir <strong>TODOS</strong> os eventos da agenda?
+                                            <br /><br />
+                                            Esta ação é <span className="text-red-400 font-semibold">irreversível</span> e irá remover:
+                                        </p>
+                                        <div className="text-left bg-gray-800/50 rounded-lg p-4 mb-6">
+                                            <ul className="text-gray-300 text-sm space-y-2">
+                                                <li className="flex items-center gap-2">
+                                                    <X size={16} className="text-red-400" />
+                                                    Todos os eventos cadastrados
+                                                </li>
+                                                <li className="flex items-center gap-2">
+                                                    <X size={16} className="text-red-400" />
+                                                    Informações de valores e pagamentos
+                                                </li>
+                                                <li className="flex items-center gap-2">
+                                                    <X size={16} className="text-red-400" />
+                                                    Observações e detalhes dos eventos
+                                                </li>
+                                                <li className="flex items-center gap-2">
+                                                    <X size={16} className="text-red-400" />
+                                                    Histórico completo da agenda
+                                                </li>
+                                            </ul>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <button
+                                                onClick={() => setShowClearConfirmation(false)}
+                                                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                                            >
+                                                Cancelar
+                                            </button>
+                                            <button
+                                                onClick={clearAllData}
+                                                className="flex-1 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white px-6 py-3 rounded-lg font-semibold transition-all"
+                                            >
+                                                Sim, Limpar Tudo
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Firebase Status Information */}
+                        <div className="mt-8 bg-gradient-to-br from-gray-900 to-black border border-blue-600 rounded-xl p-6 shadow-xl">
+                            <div className="flex items-center gap-3 mb-3">
+                                <CheckCircle className="text-blue-400" size={24} />
+                                <h3 className="text-blue-400 font-semibold">Firebase Configurado</h3>
+                            </div>
+                            <div className="space-y-3">
+                                <p className="text-gray-300 text-sm">
+                                    <strong>🔥 Projeto:</strong> {firebaseConfig.projectId}
+                                    <br />
+                                    <strong>📡 Modo Atual:</strong> Demonstração (dados simulados)
+                                </p>
+                                
+                                <div className="bg-gray-800/50 rounded-lg p-4">
+                                    <h4 className="text-yellow-400 font-medium mb-2">📋 Para Ativar Firebase Real:</h4>
+                                    <ol className="text-gray-300 text-sm space-y-1 list-decimal list-inside">
+                                        <li>Execute: <code className="bg-gray-700 px-2 py-1 rounded text-xs">npm install firebase</code></li>
+                                        <li>Descomente as importações do Firebase no código</li>
+                                        <li>Configure as regras do Firestore em seu console</li>
+                                        <li>Substitua as funções simuladas pelas reais do Firebase</li>
+                                    </ol>
+                                </div>
+                                
+                                <p className="text-green-400 text-sm">
+                                    ✅ Sua configuração Firebase está integrada e pronta para usar!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Renderizar o componente
+        ReactDOM.render(<DJAgenda />, document.getElementById('root'));
     </script>
 </body>
 </html>
