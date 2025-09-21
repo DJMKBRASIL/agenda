@@ -26,36 +26,85 @@
         };
 
         // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        const analytics = getAnalytics(app);
-        const provider = new GoogleAuthProvider();
+        let app;
+        let db;
+        let auth;
+        let provider;
+
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            provider = new GoogleAuthProvider();
+            provider.addScope('email');
+            provider.addScope('profile');
+            
+            // Configurar configurações de auth
+            auth.useDeviceLanguage();
+            
+            console.log('🔥 Firebase inicializado com sucesso!');
+        } catch (error) {
+            console.error('❌ Erro ao inicializar Firebase:', error);
+        }
 
         // Firebase Service Class
         class FirebaseService {
             constructor() {
                 this.db = db;
                 this.auth = auth;
+                this.provider = provider;
                 this.collection = 'dj-mk-events';
-                console.log('🔥 Firebase inicializado:', firebaseConfig.projectId);
+                
+                // Verificar se Firebase foi inicializado
+                if (!db || !auth) {
+                    throw new Error('Firebase não foi inicializado corretamente');
+                }
+                
+                console.log('🔥 Firebase Service criado');
             }
 
             // Authentication methods
             async signInWithGoogle() {
                 try {
-                    const result = await signInWithPopup(auth, provider);
+                    console.log('🔐 Tentando login com Google...');
+                    
+                    // Configurar o provider
+                    this.provider.setCustomParameters({
+                        prompt: 'select_account'
+                    });
+                    
+                    const result = await signInWithPopup(this.auth, this.provider);
                     console.log('✅ Login realizado:', result.user.email);
                     return result.user;
                 } catch (error) {
-                    console.error('❌ Erro no login:', error);
-                    throw error;
+                    console.error('❌ Erro no login:', error.code, error.message);
+                    
+                    // Mensagens de erro mais amigáveis
+                    let errorMessage = 'Erro ao fazer login. ';
+                    switch (error.code) {
+                        case 'auth/popup-blocked':
+                            errorMessage += 'Popup foi bloqueado pelo navegador.';
+                            break;
+                        case 'auth/popup-closed-by-user':
+                            errorMessage += 'Login cancelado pelo usuário.';
+                            break;
+                        case 'auth/unauthorized-domain':
+                            errorMessage += 'Domínio não autorizado.';
+                            break;
+                        case 'auth/network-request-failed':
+                            errorMessage += 'Erro de rede. Verifique sua conexão.';
+                            break;
+                        default:
+                            errorMessage += 'Tente novamente.';
+                    }
+                    
+                    throw new Error(errorMessage);
                 }
             }
 
             async signOut() {
                 try {
-                    await signOut(auth);
+                    await signOut(this.auth);
                     console.log('✅ Logout realizado');
                 } catch (error) {
                     console.error('❌ Erro no logout:', error);
@@ -64,11 +113,11 @@
             }
 
             onAuthChange(callback) {
-                return onAuthStateChanged(auth, callback);
+                return onAuthStateChanged(this.auth, callback);
             }
 
             getCurrentUser() {
-                return auth.currentUser;
+                return this.auth.currentUser;
             }
 
             // Firestore methods
@@ -205,8 +254,31 @@
             }
         }
 
-        // Expose Firebase service globally
-        window.firebaseService = new FirebaseService();
+        // Aguardar Firebase carregar antes de criar o service
+        let firebaseService;
+        
+        // Função para inicializar o service após Firebase carregar
+        function initializeFirebaseService() {
+            try {
+                firebaseService = new FirebaseService();
+                window.firebaseService = firebaseService;
+                console.log('✅ Firebase Service inicializado');
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao inicializar Firebase Service:', error);
+                return false;
+            }
+        }
+
+        // Tentar inicializar imediatamente
+        let serviceReady = initializeFirebaseService();
+
+        // Se não conseguir, tentar novamente após um delay
+        if (!serviceReady) {
+            setTimeout(() => {
+                serviceReady = initializeFirebaseService();
+            }, 1000);
+        }
     </script>
 
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -352,10 +424,14 @@
             const handleGoogleLogin = async () => {
                 setIsLoading(true);
                 try {
+                    if (!window.firebaseService) {
+                        throw new Error('Firebase não foi inicializado. Recarregue a página.');
+                    }
+                    
                     await window.firebaseService.signInWithGoogle();
                 } catch (error) {
                     console.error('Erro no login:', error);
-                    alert('Erro ao fazer login. Tente novamente.');
+                    alert(`Erro: ${error.message}`);
                 } finally {
                     setIsLoading(false);
                 }
@@ -452,18 +528,33 @@
             ];
 
             useEffect(() => {
-                if (!window.firebaseService) return;
-
-                const unsubscribe = window.firebaseService.onAuthChange((user) => {
-                    setUser(user);
-                    setIsLoading(false);
-                    
-                    if (user) {
-                        loadEvents();
+                // Aguardar Firebase Service estar pronto
+                const checkFirebaseReady = () => {
+                    if (!window.firebaseService) {
+                        setTimeout(checkFirebaseReady, 500);
+                        return;
                     }
-                });
 
-                return () => unsubscribe && unsubscribe();
+                    const unsubscribe = window.firebaseService.onAuthChange((user) => {
+                        console.log('👤 Auth state changed:', user ? user.email : 'No user');
+                        setUser(user);
+                        setIsLoading(false);
+                        
+                        if (user) {
+                            loadEvents();
+                        }
+                    });
+
+                    return unsubscribe;
+                };
+
+                const unsubscribe = checkFirebaseReady();
+                
+                return () => {
+                    if (unsubscribe && typeof unsubscribe === 'function') {
+                        unsubscribe();
+                    }
+                };
             }, []);
 
             const loadEvents = async () => {
