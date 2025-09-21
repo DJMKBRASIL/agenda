@@ -309,7 +309,8 @@
             const calculateRemainingValue = (total, paid) => {
                 const totalNum = parseFloat(total) || 0;
                 const paidNum = parseFloat(paid) || 0;
-                return Math.max(0, totalNum - paidNum);
+                const remaining = totalNum - paidNum;
+                return Math.max(0, remaining);
             };
 
             const formatCurrency = (value) => {
@@ -413,15 +414,23 @@
             };
 
             const getTotalRevenue = () => {
-                return events.reduce((total, event) => total + (event.totalValue || 0), 0);
+                return events.reduce((total, event) => {
+                    const value = parseFloat(event.totalValue) || 0;
+                    return total + value;
+                }, 0);
             };
 
             const getTotalPaid = () => {
-                return events.reduce((total, event) => total + (event.paidValue || 0), 0);
+                return events.reduce((total, event) => {
+                    const value = parseFloat(event.paidValue) || 0;
+                    return total + value;
+                }, 0);
             };
 
             const getTotalPending = () => {
-                return getTotalRevenue() - getTotalPaid();
+                const revenue = getTotalRevenue();
+                const paid = getTotalPaid();
+                return Math.max(0, revenue - paid);
             };
 
             const EventRow = ({ event, isEditing }) => {
@@ -665,7 +674,9 @@
                                     <DollarSign className="text-green-400" size={24} />
                                     <h3 className="text-white font-semibold">Receita Total</h3>
                                 </div>
-                                <p className="text-3xl font-bold text-green-400">{formatCurrency(getTotalRevenue())}</p>
+                                <p className="text-3xl font-bold text-green-400">
+                                    {formatCurrency(getTotalRevenue())}
+                                </p>
                             </div>
                             
                             <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-6 shadow-xl">
@@ -673,7 +684,9 @@
                                     <CheckCircle className="text-blue-400" size={24} />
                                     <h3 className="text-white font-semibold">Valor Recebido</h3>
                                 </div>
-                                <p className="text-3xl font-bold text-blue-400">{formatCurrency(getTotalPaid())}</p>
+                                <p className="text-3xl font-bold text-blue-400">
+                                    {formatCurrency(getTotalPaid())}
+                                </p>
                             </div>
                             
                             <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-6 shadow-xl">
@@ -681,7 +694,9 @@
                                     <AlertCircle className="text-yellow-400" size={24} />
                                     <h3 className="text-white font-semibold">A Receber</h3>
                                 </div>
-                                <p className="text-3xl font-bold text-yellow-400">{formatCurrency(getTotalPending())}</p>
+                                <p className="text-3xl font-bold text-yellow-400">
+                                    {formatCurrency(getTotalPending())}
+                                </p>
                             </div>
                         </div>
 
@@ -947,35 +962,6 @@
                                 </div>
                             </div>
                         )}
-
-                        {/* Firebase Status Information */}
-                        <div className="mt-8 bg-gradient-to-br from-gray-900 to-black border border-blue-600 rounded-xl p-6 shadow-xl">
-                            <div className="flex items-center gap-3 mb-3">
-                                <CheckCircle className="text-blue-400" size={24} />
-                                <h3 className="text-blue-400 font-semibold">Firebase Configurado</h3>
-                            </div>
-                            <div className="space-y-3">
-                                <p className="text-gray-300 text-sm">
-                                    <strong>🔥 Projeto:</strong> {firebaseConfig.projectId}
-                                    <br />
-                                    <strong>📡 Modo Atual:</strong> Demonstração (dados simulados)
-                                </p>
-                                
-                                <div className="bg-gray-800/50 rounded-lg p-4">
-                                    <h4 className="text-yellow-400 font-medium mb-2">📋 Para Ativar Firebase Real:</h4>
-                                    <ol className="text-gray-300 text-sm space-y-1 list-decimal list-inside">
-                                        <li>Execute: <code className="bg-gray-700 px-2 py-1 rounded text-xs">npm install firebase</code></li>
-                                        <li>Descomente as importações do Firebase no código</li>
-                                        <li>Configure as regras do Firestore em seu console</li>
-                                        <li>Substitua as funções simuladas pelas reais do Firebase</li>
-                                    </ol>
-                                </div>
-                                
-                                <p className="text-green-400 text-sm">
-                                    ✅ Sua configuração Firebase está integrada e pronta para usar!
-                                </p>
-                            </div>
-                        </div>
                     </div>
                 </div>
             );
