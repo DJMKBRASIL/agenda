@@ -13,16 +13,15 @@
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- INÍCIO: Configuração do Firebase com Credenciais ---
-        // Suas credenciais do Firebase fornecidas.
+        // --- INÍCIO: Configuração do Firebase com Credenciais ATUALIZADAS ---
         const firebaseConfig = {
-            apiKey: "AIzaSyD7FwQZspQNYZmNlQv8oNglccBXHmduW5w",
-            authDomain: "sistema-do-salao.firebaseapp.com",
-            projectId: "sistema-do-salao",
-            storageBucket: "sistema-do-salao.firebasestorage.app",
-            messagingSenderId: "395887083088",
-            appId: "1:395887083088:web:3a41fd836cc59a976ddb55",
-            measurementId: "G-1D996M5FKZ"
+            apiKey: "AIzaSyA9WOh8mWiKoQ8MkDLEQ_Aza3X9KUVzkp0",
+            authDomain: "agenda-afcce.firebaseapp.com",
+            projectId: "agenda-afcce",
+            storageBucket: "agenda-afcce.firebasestorage.app",
+            messagingSenderId: "557143303544",
+            appId: "1:557143303544:web:06adebeee10a15e614948d",
+            measurementId: "G-DMPH9NK93H"
         };
 
         let app;
@@ -72,7 +71,8 @@
                 try {
                     await signOut(this.auth);
                     console.log('✅ Logout realizado');
-                } catch (error) {
+                } catch (error)
+                    {
                     console.error('❌ Erro no logout:', error);
                     throw error;
                 }
