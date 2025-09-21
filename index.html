@@ -314,7 +314,10 @@
                         setIsAddingEvent(false);
                     } catch (error) {
                         console.error('Erro ao adicionar evento:', error);
+                        alert(`Não foi possível adicionar o evento: ${error.message}`);
                     }
+                } else {
+                    alert('Por favor, preencha a data e o local do evento.');
                 }
             };
 
@@ -417,21 +420,219 @@
         }
 
         // --- Componentes Filhos ---
-        const Header = ({ user, onLogout }) => ( <header className="flex justify-between items-center mb-6"> <div> <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1> <p className="text-gray-400">Bem-vindo, {user.displayName || user.email || 'DJ'}</p> </div> <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40 transition-colors"> <LogOut s={16} /> <span>Sair</span> </button> </header> );
-        const Summary = ({ totals, totalPending, formatCurrency }) => ( <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center"> <p className="text-sm text-gray-400">Faturamento Total</p> <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center"> <p className="text-sm text-gray-400">Total Recebido</p> <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center"> <p className="text-sm text-gray-400">Pendente</p> <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p> </div> </div> );
-        const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => { const changeMonth = (delta) => { let newMonth = currentMonth + delta; let newYear = currentYear; if (newMonth > 11) { newMonth = 0; newYear++; } if (newMonth < 0) { newMonth = 11; newYear--; } setCurrentMonth(newMonth); setCurrentYear(newYear); }; return ( <div className="flex justify-between items-center mb-4 flex-wrap gap-2"> <div className="flex items-center gap-2"> <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button> <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span> <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button> </div> <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors"> <Plus s={16} /> <span>Novo Evento</span> </button> </div> ); };
-        const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => { if (events.length === 0) { return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>; } return ( <div className="overflow-x-auto"> <table className="w-full text-left"> <thead className="text-xs text-gray-400 uppercase"> <tr className="border-b border-gray-700"> <th className="px-4 py-3">Data</th> <th className="px-4 py-3">Local</th> <th className="px-4 py-3">Valor Total</th> <th className="px-4 py-3">Status</th> <th className="px-4 py-3 text-right">Ações</th> </tr> </thead> <tbody> {events.map(event => event.id === editingEvent ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} /> : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} /> )} </tbody> </table> </div> ); };
-        const EventDisplayRow = ({ event, onEdit, onDelete, formatCurrency }) => { const StatusIcon = { 'pago': CheckCircle, 'pendente': AlertCircle, 'em aberto': Circle }[event.status]; const statusColor = { 'pago': 'text-green-400', 'pendente': 'text-yellow-400', 'em aberto': 'text-red-400' }[event.status]; const remainingValue = (Number(event.totalValue) || 0) - (Number(event.paidValue) || 0); const date = new Date(event.date + 'T00:00:00-03:00'); return ( <tr className="border-b border-gray-800 hover:bg-gray-800/50"> <td className="px-4 py-3"> <div className="font-bold">{String(date.getDate()).padStart(2, '0')}/{String(date.getMonth() + 1).padStart(2, '0')}</div> <div className="text-xs text-gray-400">{event.startTime} - {event.endTime}</div> </td> <td className="px-4 py-3">{event.location}</td> <td className="px-4 py-3"> <div>{formatCurrency(event.totalValue)}</div> <div className="text-xs text-yellow-400">Falta: {formatCurrency(remainingValue)}</div> </td> <td className="px-4 py-3"> <span className={`flex items-center gap-2 ${statusColor}`}> <StatusIcon s={16} /> {event.status} </span> </td> <td className="px-4 py-3 text-right"> <button onClick={onEdit} className="p-2 text-gray-400 hover:text-white"><Edit3 s={16}/></button> <button onClick={() => onDelete(event.id)} className="p-2 text-gray-400 hover:text-red-500"><X s={16}/></button> </td> </tr> ); };
-        const EventFormRow = ({ event, onSave, onCancel }) => { const [data, setData] = useState(event); const handleChange = (e) => { const { name, value } = e.target; setData(prev => ({ ...prev, [name]: value })); }; return ( <tr className="border-b border-gray-800 bg-gray-800/50"> <td colSpan="5" className="p-4"> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="location" placeholder="Local" value={data.location} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="totalValue" type="number" placeholder="Valor Total" value={data.totalValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago" value={data.paidValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações" value={data.observations} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full md:col-span-2 lg:col-span-4" rows="2"></textarea> </div> <div className="flex justify-end gap-2 mt-4"> <button onClick={onCancel} className="bg-gray-600 px-4 py-2 rounded hover:bg-gray-500">Cancelar</button> <button onClick={() => onSave(event.id, data)} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">Salvar</button> </div> </td> </tr> ); };
-        const EventModal = ({ onClose, onSave, title, initialData }) => { const [data, setData] = useState(initialData || { date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: '' }); const handleChange = e => { const { name, value } = e.target; setData(prev => ({ ...prev, [name]: value })); }; const handleSave = () => { const eventData = { ...data, totalValue: parseFloat(data.totalValue) || 0, paidValue: parseFloat(data.paidValue) || 0, }; onSave(eventData); }; return ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in"> <div className="flex justify-between items-center mb-4"> <h2 className="text-xl font-bold">{title}</h2> <button onClick={onClose} className="p-2 text-gray-400 hover:text-white"><X /></button> </div> <div className="space-y-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required/> <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required /> <div className="grid grid-cols-2 gap-4"> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <div className="grid grid-cols-2 gap-4"> <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea> </div> <div className="flex justify-end gap-3 mt-6"> <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600 transition-colors">Cancelar</button> <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors">Salvar Evento</button> </div> </div> </div> ); };
-        const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-red-500/50 rounded-xl p-6 w-full max-w-md modal-fade-in text-center"> <AlertCircle s={40} c="text-red-500 mx-auto mb-4" /> <h2 className="text-xl font-bold mb-2">{title}</h2> <p className="text-gray-400 mb-6">{message}</p> <div className="flex justify-center gap-4"> <button onClick={onCancel} className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={onConfirm} className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-500 font-bold">Confirmar</button> </div> </div> </div> );
-        const Footer = ({ onClearAll }) => ( <footer className="text-center mt-8"> <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline"> Limpar toda a agenda </button> <p className="text-xs text-gray-600 mt-2">Desenvolvido com ❤️ para DJ MK</p> </footer> );
+        const Header = ({ user, onLogout }) => (
+            <header className="flex justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1>
+                    <p className="text-gray-400">Bem-vindo, {user.displayName || user.email || 'DJ'}</p>
+                </div>
+                <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40 transition-colors">
+                    <LogOut s={16} />
+                    <span>Sair</span>
+                </button>
+            </header>
+        );
+
+        const Summary = ({ totals, totalPending, formatCurrency }) => (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-sm text-gray-400">Faturamento Total</p>
+                    <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-sm text-gray-400">Total Recebido</p>
+                    <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-sm text-gray-400">Pendente</p>
+                    <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p>
+                </div>
+            </div>
+        );
+
+        const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => {
+            const changeMonth = (delta) => {
+                let newMonth = currentMonth + delta;
+                let newYear = currentYear;
+                if (newMonth > 11) { newMonth = 0; newYear++; }
+                if (newMonth < 0) { newMonth = 11; newYear--; }
+                setCurrentMonth(newMonth);
+                setCurrentYear(newYear);
+            };
+            return (
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button>
+                        <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span>
+                        <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button>
+                    </div>
+                    <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors">
+                        <Plus s={16} />
+                        <span>Novo Evento</span>
+                    </button>
+                </div>
+            );
+        };
+
+        const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => {
+            if (events.length === 0) {
+                return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>;
+            }
+            return (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="text-xs text-gray-400 uppercase">
+                            <tr className="border-b border-gray-700">
+                                <th className="px-4 py-3">Data</th>
+                                <th className="px-4 py-3">Local</th>
+                                <th className="px-4 py-3">Valor Total</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {events.map(event =>
+                                event.id === editingEvent
+                                    ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} />
+                                    : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} />
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+
+        const EventDisplayRow = ({ event, onEdit, onDelete, formatCurrency }) => {
+            const StatusIcon = { 'pago': CheckCircle, 'pendente': AlertCircle, 'em aberto': Circle }[event.status];
+            const statusColor = { 'pago': 'text-green-400', 'pendente': 'text-yellow-400', 'em aberto': 'text-red-400' }[event.status];
+            const remainingValue = (Number(event.totalValue) || 0) - (Number(event.paidValue) || 0);
+            const date = new Date(event.date + 'T00:00:00-03:00');
+            return (
+                <tr className="border-b border-gray-800 hover:bg-gray-800/50">
+                    <td className="px-4 py-3">
+                        <div className="font-bold">{String(date.getDate()).padStart(2, '0')}/{String(date.getMonth() + 1).padStart(2, '0')}</div>
+                        <div className="text-xs text-gray-400">{event.startTime} - {event.endTime}</div>
+                    </td>
+                    <td className="px-4 py-3">{event.location}</td>
+                    <td className="px-4 py-3">
+                        <div>{formatCurrency(event.totalValue)}</div>
+                        <div className="text-xs text-yellow-400">Falta: {formatCurrency(remainingValue)}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                        <span className={`flex items-center gap-2 ${statusColor}`}>
+                            <StatusIcon s={16} /> {event.status}
+                        </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                        <button onClick={onEdit} className="p-2 text-gray-400 hover:text-white"><Edit3 s={16} /></button>
+                        <button onClick={() => onDelete(event.id)} className="p-2 text-gray-400 hover:text-red-500"><X s={16} /></button>
+                    </td>
+                </tr>
+            );
+        };
+
+        const EventFormRow = ({ event, onSave, onCancel }) => {
+            const [data, setData] = useState(event);
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setData(prev => ({ ...prev, [name]: value }));
+            };
+            return (
+                <tr className="border-b border-gray-800 bg-gray-800/50">
+                    <td colSpan="5" className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                            <input name="location" placeholder="Local" value={data.location} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                            <input name="totalValue" type="number" placeholder="Valor Total" value={data.totalValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                            <input name="paidValue" type="number" placeholder="Valor Pago" value={data.paidValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                            <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                            <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                            <select name="status" value={data.status} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full">
+                                <option value="em aberto">Em Aberto</option>
+                                <option value="pendente">Pendente</option>
+                                <option value="pago">Pago</option>
+                            </select>
+                            <textarea name="observations" placeholder="Observações" value={data.observations} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full md:col-span-2 lg:col-span-4" rows="2"></textarea>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-4">
+                            <button onClick={onCancel} className="bg-gray-600 px-4 py-2 rounded hover:bg-gray-500">Cancelar</button>
+                            <button onClick={() => onSave(event.id, data)} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">Salvar</button>
+                        </div>
+                    </td>
+                </tr>
+            );
+        };
+
+        const EventModal = ({ onClose, onSave, title, initialData }) => {
+            const [data, setData] = useState(initialData || { date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: '' });
+            const handleChange = e => {
+                const { name, value } = e.target;
+                setData(prev => ({ ...prev, [name]: value }));
+            };
+            const handleSave = () => {
+                const eventData = { ...data, totalValue: parseFloat(data.totalValue) || 0, paidValue: parseFloat(data.paidValue) || 0, };
+                onSave(eventData);
+            };
+            return (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">{title}</h2>
+                            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white"><X /></button>
+                        </div>
+                        <div className="space-y-4">
+                            <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required />
+                            <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required />
+                            <div className="grid grid-cols-2 gap-4">
+                                <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                                <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                                <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                            </div>
+                            <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full">
+                                <option value="em aberto">Em Aberto</option>
+                                <option value="pendente">Pendente</option>
+                                <option value="pago">Pago</option>
+                            </select>
+                            <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600 transition-colors">Cancelar</button>
+                            <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors">Salvar Evento</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                <div className="bg-gray-900 border border-red-500/50 rounded-xl p-6 w-full max-w-md modal-fade-in text-center">
+                    <AlertCircle s={40} c="text-red-500 mx-auto mb-4" />
+                    <h2 className="text-xl font-bold mb-2">{title}</h2>
+                    <p className="text-gray-400 mb-6">{message}</p>
+                    <div className="flex justify-center gap-4">
+                        <button onClick={onCancel} className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600">Cancelar</button>
+                        <button onClick={onConfirm} className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-500 font-bold">Confirmar</button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const Footer = ({ onClearAll }) => (
+            <footer className="text-center mt-8">
+                <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline">
+                    Limpar toda a agenda
+                </button>
+                <p className="text-xs text-gray-600 mt-2">Desenvolvido com ❤️ para DJ MK</p>
+            </footer>
+        );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<DJAgendaApp />);
     </script>
 </body>
 </html>
-
-
 
