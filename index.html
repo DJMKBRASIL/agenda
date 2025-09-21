@@ -1,1489 +1,675 @@
-Nesse código abaixo adicione as credencias do meu firebase para que eu salve os dados nele, você tem elas ai na sua memoria.
-
-
-
-
-
 <!DOCTYPE html>
-
 <html lang="pt-BR">
-
 <head>
-
-    <meta charset="UTF-8">
-
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>DJ MK - Agenda Profissional</title>
-
-    <meta name="description" content="Agenda profissional para DJ MK - Gerencie seus eventos, valores e pagamentos">
-
-    
-
-    <!-- Firebase v9+ -->
-
-    <script type="module">
-
-        // Import the functions you need from the SDKs you need
-
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-
-        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-
-        import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js';
-
-
-
-        // Your web app's Firebase configuration
-
-        const firebaseConfig = {
-
-            apiKey: "AIzaSyD7FwQZspQNYZmNlQv8oNglccBXHmduW5w",
-
-            authDomain: "sistema-do-salao.firebaseapp.com",
-
-            projectId: "sistema-do-salao",
-
-            storageBucket: "sistema-do-salao.firebasestorage.app",
-
-            messagingSenderId: "395887083088",
-
-            appId: "1:395887083088:web:3a41fd836cc59a976ddb55",
-
-            measurementId: "G-1D996M5FKZ"
-
-        };
-
-
-
-        // Initialize Firebase
-
-        let app;
-
-        let db;
-
-        let auth;
-
-        let provider;
-
-
-
-        try {
-
-            app = initializeApp(firebaseConfig);
-
-            db = getFirestore(app);
-
-            auth = getAuth(app);
-
-            provider = new GoogleAuthProvider();
-
-            provider.addScope('email');
-
-            provider.addScope('profile');
-
-            
-
-            // Configurar configurações de auth
-
-            auth.useDeviceLanguage();
-
-            
-
-            console.log('🔥 Firebase inicializado com sucesso!');
-
-        } catch (error) {
-
-            console.error('❌ Erro ao inicializar Firebase:', error);
-
-        }
-
-
-
-        // Firebase Service Class
-
-        class FirebaseService {
-
-            constructor() {
-
-                this.db = db;
-
-                this.auth = auth;
-
-                this.provider = provider;
-
-                this.collection = 'dj-mk-events';
-
-                
-
-                // Verificar se Firebase foi inicializado
-
-                if (!db || !auth) {
-
-                    throw new Error('Firebase não foi inicializado corretamente');
-
-                }
-
-                
-
-                console.log('🔥 Firebase Service criado');
-
-            }
-
-
-
-            // Authentication methods
-
-            async signInWithGoogle() {
-
-                try {
-
-                    console.log('🔐 Tentando login com Google...');
-
-                    
-
-                    // Configurar o provider
-
-                    this.provider.setCustomParameters({
-
-                        prompt: 'select_account'
-
-                    });
-
-                    
-
-                    const result = await signInWithPopup(this.auth, this.provider);
-
-                    console.log('✅ Login realizado:', result.user.email);
-
-                    return result.user;
-
-                } catch (error) {
-
-                    console.error('❌ Erro no login:', error.code, error.message);
-
-                    
-
-                    // Mensagens de erro mais amigáveis
-
-                    let errorMessage = 'Erro ao fazer login. ';
-
-                    switch (error.code) {
-
-                        case 'auth/popup-blocked':
-
-                            errorMessage += 'Popup foi bloqueado pelo navegador.';
-
-                            break;
-
-                        case 'auth/popup-closed-by-user':
-
-                            errorMessage += 'Login cancelado pelo usuário.';
-
-                            break;
-
-                        case 'auth/unauthorized-domain':
-
-                            errorMessage += 'Domínio não autorizado.';
-
-                            break;
-
-                        case 'auth/network-request-failed':
-
-                            errorMessage += 'Erro de rede. Verifique sua conexão.';
-
-                            break;
-
-                        default:
-
-                            errorMessage += 'Tente novamente.';
-
-                    }
-
-                    
-
-                    throw new Error(errorMessage);
-
-                }
-
-            }
-
-
-
-            async signOut() {
-
-                try {
-
-                    await signOut(this.auth);
-
-                    console.log('✅ Logout realizado');
-
-                } catch (error) {
-
-                    console.error('❌ Erro no logout:', error);
-
-                    throw error;
-
-                }
-
-            }
-
-
-
-            onAuthChange(callback) {
-
-                return onAuthStateChanged(this.auth, callback);
-
-            }
-
-
-
-            getCurrentUser() {
-
-                return this.auth.currentUser;
-
-            }
-
-
-
-            // Firestore methods
-
-            async getAllEvents() {
-
-                try {
-
-                    const user = this.getCurrentUser();
-
-                    if (!user) throw new Error('Usuário não autenticado');
-
-
-
-                    const q = query(
-
-                        collection(this.db, this.collection),
-
-                        where('userId', '==', user.uid)
-
-                    );
-
-                    
-
-                    const querySnapshot = await getDocs(q);
-
-                    const events = [];
-
-                    querySnapshot.forEach((doc) => {
-
-                        events.push({ id: doc.id, ...doc.data() });
-
-                    });
-
-                    
-
-                    // Ordenar por data no frontend
-
-                    events.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-                    
-
-                    console.log('📅 Eventos carregados:', events.length);
-
-                    return events;
-
-                } catch (error) {
-
-                    console.error('❌ Erro ao carregar eventos:', error);
-
-                    throw error;
-
-                }
-
-            }
-
-
-
-            async addEvent(eventData) {
-
-                try {
-
-                    const user = this.getCurrentUser();
-
-                    if (!user) {
-
-                        throw new Error('Usuário não autenticado');
-
-                    }
-
-
-
-                    // Validar dados obrigatórios
-
-                    if (!eventData.date || !eventData.location) {
-
-                        throw new Error('Data e local são obrigatórios');
-
-                    }
-
-
-
-                    const dataWithUser = {
-
-                        date: eventData.date,
-
-                        startTime: eventData.startTime || '',
-
-                        endTime: eventData.endTime || '',
-
-                        location: eventData.location,
-
-                        totalValue: Number(eventData.totalValue) || 0,
-
-                        paidValue: Number(eventData.paidValue) || 0,
-
-                        status: eventData.status || 'em aberto',
-
-                        observations: eventData.observations || '',
-
-                        userId: user.uid,
-
-                        createdAt: new Date().toISOString(),
-
-                        updatedAt: new Date().toISOString()
-
-                    };
-
-
-
-                    console.log('📝 Adicionando evento:', dataWithUser);
-
-                    const docRef = await addDoc(collection(this.db, this.collection), dataWithUser);
-
-                    console.log('✅ Evento adicionado com ID:', docRef.id);
-
-                    
-
-                    return { id: docRef.id, ...dataWithUser };
-
-                } catch (error) {
-
-                    console.error('❌ Erro detalhado ao adicionar evento:', error);
-
-                    throw error;
-
-                }
-
-            }
-
-
-
-            async updateEvent(eventId, eventData) {
-
-                try {
-
-                    const user = this.getCurrentUser();
-
-                    if (!user) {
-
-                        throw new Error('Usuário não autenticado');
-
-                    }
-
-
-
-                    const dataWithUpdate = {
-
-                        date: eventData.date,
-
-                        startTime: eventData.startTime || '',
-
-                        endTime: eventData.endTime || '',
-
-                        location: eventData.location,
-
-                        totalValue: Number(eventData.totalValue) || 0,
-
-                        paidValue: Number(eventData.paidValue) || 0,
-
-                        status: eventData.status || 'em aberto',
-
-                        observations: eventData.observations || '',
-
-                        updatedAt: new Date().toISOString()
-
-                    };
-
-
-
-                    console.log('📝 Atualizando evento:', eventId, dataWithUpdate);
-
-                    await updateDoc(doc(this.db, this.collection, eventId), dataWithUpdate);
-
-                    console.log('✅ Evento atualizado:', eventId);
-
-                    
-
-                    return { id: eventId, ...dataWithUpdate, userId: user.uid };
-
-                } catch (error) {
-
-                    console.error('❌ Erro detalhado ao atualizar evento:', error);
-
-                    throw error;
-
-                }
-
-            }
-
-
-
-            async deleteEvent(eventId) {
-
-                try {
-
-                    const user = this.getCurrentUser();
-
-                    if (!user) throw new Error('Usuário não autenticado');
-
-
-
-                    await deleteDoc(doc(this.db, this.collection, eventId));
-
-                    console.log('✅ Evento deletado:', eventId);
-
-                } catch (error) {
-
-                    console.error('❌ Erro ao deletar evento:', error);
-
-                    throw error;
-
-                }
-
-            }
-
-
-
-            async clearAllEvents() {
-
-                try {
-
-                    const user = this.getCurrentUser();
-
-                    if (!user) throw new Error('Usuário não autenticado');
-
-
-
-                    const q = query(
-
-                        collection(this.db, this.collection),
-
-                        where('userId', '==', user.uid)
-
-                    );
-
-                    
-
-                    const querySnapshot = await getDocs(q);
-
-                    const deletePromises = [];
-
-                    
-
-                    querySnapshot.forEach((document) => {
-
-                        deletePromises.push(deleteDoc(document.ref));
-
-                    });
-
-                    
-
-                    await Promise.all(deletePromises);
-
-                    console.log('🗑️ Todos os eventos deletados');
-
-                } catch (error) {
-
-                    console.error('❌ Erro ao limpar eventos:', error);
-
-                    throw error;
-
-                }
-
-            }
-
-        }
-
-
-
-        // Aguardar Firebase carregar antes de criar o service
-
-        let firebaseService;
-
-        
-
-        // Função para inicializar o service após Firebase carregar
-
-        function initializeFirebaseService() {
-
-            try {
-
-                firebaseService = new FirebaseService();
-
-                window.firebaseService = firebaseService;
-
-                console.log('✅ Firebase Service inicializado');
-
-                return true;
-
-            } catch (error) {
-
-                console.error('❌ Erro ao inicializar Firebase Service:', error);
-
-                return false;
-
-            }
-
-        }
-
-
-
-        // Tentar inicializar imediatamente
-
-        let serviceReady = initializeFirebaseService();
-
-
-
-        // Se não conseguir, tentar novamente após um delay
-
-        if (!serviceReady) {
-
-            setTimeout(() => {
-
-                serviceReady = initializeFirebaseService();
-
-            }, 1000);
-
-        }
-
-    </script>
-
-
-
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <script>
-
-        tailwind.config = {
-
-            theme: {
-
-                extend: {}
-
-            }
-
-        }
-
-    </script>
-
-    <style>
-
-        * {
-
-            margin: 0;
-
-            padding: 0;
-
-            box-sizing: border-box;
-
-        }
-
-        body {
-
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-
-            -webkit-font-smoothing: antialiased;
-
-            -moz-osx-font-smoothing: grayscale;
-
-            background: #000;
-
-        }
-
-        .lucide {
-
-            width: 1em;
-
-            height: 1em;
-
-            stroke: currentColor;
-
-            stroke-width: 2;
-
-            fill: none;
-
-            stroke-linecap: round;
-
-            stroke-linejoin: round;
-
-        }
-
-    </style>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DJ MK - Agenda Profissional</title>
+    <meta name="description" content="Agenda profissional para DJ MK - Gerencie seus eventos, valores e pagamentos">
+    
+    <!-- Firebase SDKs (versões atualizadas) -->
+    <script type="module">
+        // Importações do Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- INÍCIO: Configuração Segura do Firebase ---
+        // As credenciais são injetadas de forma segura pelo ambiente.
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let app;
+        let db;
+        let auth;
+
+        // Só inicializa o Firebase se a configuração estiver presente
+        if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                console.log('🔥 Firebase inicializado com sucesso!');
+            } catch (error) {
+                console.error('❌ Erro ao inicializar Firebase:', error);
+            }
+        } else {
+            console.warn('⚠️ Configuração do Firebase não encontrada. A aplicação não se conectará ao banco de dados.');
+        }
+        
+        // Função para autenticar o usuário de forma segura
+        const authenticateUser = async () => {
+            if (!auth) return;
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                    console.log('👤 Usuário autenticado com token customizado.');
+                } else {
+                    await signInAnonymously(auth);
+                    console.log('👤 Usuário autenticado anonimamente.');
+                }
+            } catch (error) {
+                console.error('❌ Erro na autenticação:', error);
+            }
+        };
+
+        // Autentica o usuário assim que o script carregar
+        authenticateUser();
+        // --- FIM: Configuração Segura do Firebase ---
+
+        // Classe de serviço para interagir com o Firestore
+        class FirebaseService {
+            constructor(userId) {
+                if (!db || !auth || !userId) {
+                    throw new Error('Firebase não inicializado ou usuário não autenticado.');
+                }
+                this.db = db;
+                this.auth = auth;
+                this.userId = userId;
+                // O caminho da coleção é específico para o usuário logado, garantindo a privacidade dos dados.
+                this.collectionPath = `artifacts/${appId}/users/${this.userId}/dj-mk-events`;
+                console.log(`🔥 Firebase Service pronto. Usando a coleção: ${this.collectionPath}`);
+            }
+
+            // Métodos de autenticação
+            onAuthChange(callback) {
+                return onAuthStateChanged(this.auth, callback);
+            }
+
+            async signOut() {
+                try {
+                    await signOut(this.auth);
+                    console.log('✅ Logout realizado');
+                } catch (error) {
+                    console.error('❌ Erro no logout:', error);
+                    throw error;
+                }
+            }
+            
+            getCurrentUser() {
+                return this.auth.currentUser;
+            }
+
+            // Métodos do Firestore
+            async getAllEvents() {
+                try {
+                    const q = query(collection(this.db, this.collectionPath));
+                    const querySnapshot = await getDocs(q);
+                    const events = [];
+                    querySnapshot.forEach((doc) => {
+                        events.push({ id: doc.id, ...doc.data() });
+                    });
+                    events.sort((a, b) => new Date(a.date) - new Date(b.date));
+                    console.log('📅 Eventos carregados:', events.length);
+                    return events;
+                } catch (error) {
+                    console.error('❌ Erro ao carregar eventos:', error);
+                    throw error;
+                }
+            }
+
+            async addEvent(eventData) {
+                try {
+                    if (!eventData.date || !eventData.location) {
+                        throw new Error('Data e local são obrigatórios');
+                    }
+                    const dataWithMeta = {
+                        ...eventData,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    };
+                    const docRef = await addDoc(collection(this.db, this.collectionPath), dataWithMeta);
+                    console.log('✅ Evento adicionado com ID:', docRef.id);
+                    return { id: docRef.id, ...dataWithMeta };
+                } catch (error) {
+                    console.error('❌ Erro ao adicionar evento:', error);
+                    throw error;
+                }
+            }
+
+            async updateEvent(eventId, eventData) {
+                try {
+                    const dataWithUpdate = {
+                       ...eventData,
+                        updatedAt: new Date().toISOString()
+                    };
+                    const eventDoc = doc(this.db, this.collectionPath, eventId);
+                    await updateDoc(eventDoc, dataWithUpdate);
+                    console.log('✅ Evento atualizado:', eventId);
+                    return { id: eventId, ...dataWithUpdate };
+                } catch (error) {
+                    console.error('❌ Erro ao atualizar evento:', error);
+                    throw error;
+                }
+            }
+
+            async deleteEvent(eventId) {
+                try {
+                    const eventDoc = doc(this.db, this.collectionPath, eventId);
+                    await deleteDoc(eventDoc);
+                    console.log('✅ Evento deletado:', eventId);
+                } catch (error) {
+                    console.error('❌ Erro ao deletar evento:', error);
+                    throw error;
+                }
+            }
+
+            async clearAllEvents() {
+                try {
+                    const querySnapshot = await getDocs(collection(this.db, this.collectionPath));
+                    const batch = writeBatch(this.db);
+                    querySnapshot.forEach((doc) => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    console.log('🗑️ Todos os eventos do usuário foram deletados.');
+                } catch (error) {
+                    console.error('❌ Erro ao limpar eventos:', error);
+                    throw error;
+                }
+            }
+        }
+        // Expondo a classe e o auth para o escopo global para que o React possa usá-los
+        window.FirebaseService = FirebaseService;
+        window.auth = auth;
+        window.onAuthStateChanged = onAuthStateChanged;
+    </script>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background: #000;
+        }
+        .lucide {
+            width: 1em; height: 1em; stroke: currentColor; stroke-width: 2;
+            fill: none; stroke-linecap: round; stroke-linejoin: round;
+        }
+        /* Animação para o modal aparecer */
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .modal-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+    </style>
 </head>
-
 <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- Ícones ---
+        const Calendar = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>);
+        const Clock = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>);
+        const MapPin = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>);
+        const DollarSign = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
+        const Plus = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
+        const Edit3 = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>);
+        const Save = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>);
+        const X = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>);
+        const CheckCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>);
+        const AlertCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>);
+        const Circle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>);
+        const LogOut = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>);
+
+        // Componente principal da aplicação
+        function DJAgendaApp() {
+            const [user, setUser] = useState(null);
+            const [isAuthReady, setIsAuthReady] = useState(false);
+            const [events, setEvents] = useState([]);
+            const [editingEvent, setEditingEvent] = useState(null);
+            const [isAddingEvent, setIsAddingEvent] = useState(false);
+            const [isLoading, setIsLoading] = useState(true);
+            const [showClearConfirmation, setShowClearConfirmation] = useState(false);
+            
+            const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+
+            const firebaseService = useMemo(() => {
+                if (user) {
+                    return new window.FirebaseService(user.uid);
+                }
+                return null;
+            }, [user]);
+
+            useEffect(() => {
+                if (window.auth) {
+                    const unsubscribe = window.onAuthStateChanged(window.auth, (currentUser) => {
+                        setUser(currentUser);
+                        setIsAuthReady(true);
+                        if (!currentUser) {
+                            setIsLoading(false);
+                        }
+                    });
+                    return () => unsubscribe();
+                } else {
+                    // Se o Firebase não inicializou, para de carregar
+                    setIsAuthReady(true);
+                    setIsLoading(false);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (firebaseService) {
+                    loadEvents();
+                }
+            }, [firebaseService]);
+
+            const loadEvents = async () => {
+                setIsLoading(true);
+                try {
+                    const eventsData = await firebaseService.getAllEvents();
+                    setEvents(eventsData);
+                } catch (error) {
+                    console.error('Erro ao carregar eventos:', error);
+                    // Adicionar um toast/alerta customizado aqui
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            
+            const handleLogout = async () => {
+                if(firebaseService) await firebaseService.signOut();
+            };
+
+            const addEvent = async (newEventData) => {
+                if (firebaseService && newEventData.date && newEventData.location) {
+                    try {
+                        const savedEvent = await firebaseService.addEvent(newEventData);
+                        setEvents(prev => [...prev, savedEvent].sort((a,b) => new Date(a.date) - new Date(b.date)));
+                        setIsAddingEvent(false);
+                    } catch (error) {
+                        console.error('Erro ao adicionar evento:', error);
+                    }
+                }
+            };
+
+            const updateEvent = async (id, updatedData) => {
+                if (firebaseService) {
+                    try {
+                        await firebaseService.updateEvent(id, updatedData);
+                        setEvents(events.map(event => event.id === id ? { ...event, ...updatedData } : event));
+                        setEditingEvent(null);
+                    } catch (error) {
+                         console.error('Erro ao atualizar evento:', error);
+                    }
+                }
+            };
+
+            const deleteEvent = async (id) => {
+                if (firebaseService) {
+                    try {
+                        await firebaseService.deleteEvent(id);
+                        setEvents(events.filter(event => event.id !== id));
+                    } catch (error) {
+                        console.error('Erro ao deletar evento:', error);
+                    }
+                }
+            };
+
+            const clearAllData = async () => {
+                if (firebaseService) {
+                    try {
+                        await firebaseService.clearAllEvents();
+                        setEvents([]);
+                        setShowClearConfirmation(false);
+                    } catch (error) {
+                        console.error('Erro ao limpar dados:', error);
+                    }
+                }
+            };
+            
+            const monthNames = [ 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro' ];
+
+            const getEventsForMonth = () => {
+                return events.filter(event => {
+                    const eventDate = new Date(event.date + 'T00:00:00-03:00'); // Considerar fuso horário
+                    return eventDate.getMonth() === currentMonth && eventDate.getFullYear() === currentYear;
+                }).sort((a, b) => new Date(a.date) - new Date(b.date));
+            };
+
+            const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+
+            const totals = useMemo(() => {
+                return events.reduce((acc, event) => {
+                    acc.totalRevenue += Number(event.totalValue) || 0;
+                    acc.totalPaid += Number(event.paidValue) || 0;
+                    return acc;
+                }, { totalRevenue: 0, totalPaid: 0 });
+            }, [events]);
+
+            const totalPending = totals.totalRevenue - totals.totalPaid;
+
+            if (!isAuthReady || (isLoading && !user)) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-4"></div>
+                            <h2 className="text-2xl font-bold text-white mb-2">DJ MK</h2>
+                            <p className="text-gray-400">Autenticando e carregando agenda...</p>
+                        </div>
+                    </div>
+                );
+            }
+            
+            if (!user) {
+                 return (
+                    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center p-4">
+                       <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 max-w-md w-full shadow-2xl text-center">
+                           <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent mb-2">DJ MK</h1>
+                           <p className="text-gray-400 text-lg mb-8">Agenda Profissional</p>
+                           <div className="w-24 h-1 bg-gradient-to-r from-yellow-500 to-yellow-300 mx-auto mb-8"></div>
+                           <AlertCircle c="text-red-500 mx-auto mb-4" s={48} />
+                           <h2 className="text-white text-xl font-semibold mb-2">Falha na Autenticação</h2>
+                           <p className="text-gray-400 text-sm">Não foi possível conectar. Por favor, recarregue a página e tente novamente.</p>
+                       </div>
+                    </div>
+                );
+            }
+            
+            return (
+                <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
+                    <div className="max-w-7xl mx-auto">
+                        <Header user={user} onLogout={handleLogout} />
+                        <Summary totals={totals} totalPending={totalPending} formatCurrency={formatCurrency} />
+                        
+                        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 sm:p-6 mt-6">
+                            <MonthNavigator 
+                                currentMonth={currentMonth}
+                                currentYear={currentYear}
+                                setCurrentMonth={setCurrentMonth}
+                                setCurrentYear={setCurrentYear}
+                                monthNames={monthNames}
+                                onAddEvent={() => setIsAddingEvent(true)}
+                            />
+
+                            {isLoading ? (
+                                <p className="text-center text-gray-400 py-8">Carregando eventos...</p>
+                            ) : (
+                                <EventTable 
+                                    events={getEventsForMonth()} 
+                                    editingEvent={editingEvent}
+                                    setEditingEvent={setEditingEvent}
+                                    updateEvent={updateEvent}
+                                    deleteEvent={deleteEvent}
+                                    formatCurrency={formatCurrency}
+                                />
+                            )}
+                        </div>
+                        
+                        <Footer onClearAll={() => setShowClearConfirmation(true)} />
+                    </div>
+
+                    {isAddingEvent && (
+                        <EventModal 
+                            onClose={() => setIsAddingEvent(false)}
+                            onSave={addEvent}
+                            title="Adicionar Novo Evento"
+                        />
+                    )}
+                    
+                    {showClearConfirmation && (
+                        <ConfirmationModal
+                            title="Confirmar Limpeza"
+                            message="Você tem certeza que deseja apagar TODOS os eventos da sua agenda? Esta ação não pode ser desfeita."
+                            onConfirm={clearAllData}
+                            onCancel={() => setShowClearConfirmation(false)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // --- Componentes Filhos ---
+        
+        const Header = ({ user, onLogout }) => (
+            <header className="flex justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1>
+                    <p className="text-gray-400">Bem-vindo, {user.displayName || user.email || 'DJ'}</p>
+                </div>
+                <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40 transition-colors">
+                    <LogOut s={16} />
+                    <span>Sair</span>
+                </button>
+            </header>
+        );
+
+        const Summary = ({ totals, totalPending, formatCurrency }) => (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-sm text-gray-400">Faturamento Total</p>
+                    <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-sm text-gray-400">Total Recebido</p>
+                    <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-sm text-gray-400">Pendente</p>
+                    <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p>
+                </div>
+            </div>
+        );
+        
+        const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => {
+            const changeMonth = (delta) => {
+                let newMonth = currentMonth + delta;
+                let newYear = currentYear;
+                if (newMonth > 11) { newMonth = 0; newYear++; }
+                if (newMonth < 0) { newMonth = 11; newYear--; }
+                setCurrentMonth(newMonth);
+                setCurrentYear(newYear);
+            };
+
+            return (
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button>
+                        <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span>
+                        <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button>
+                    </div>
+                     <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors">
+                        <Plus s={16} />
+                        <span>Novo Evento</span>
+                    </button>
+                </div>
+            );
+        };
+        
+        const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => {
+            if (events.length === 0) {
+                return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>;
+            }
+
+            return (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="text-xs text-gray-400 uppercase">
+                            <tr className="border-b border-gray-700">
+                                <th className="px-4 py-3">Data</th>
+                                <th className="px-4 py-3">Local</th>
+                                <th className="px-4 py-3">Valor Total</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {events.map(event => 
+                                event.id === editingEvent ?
+                                <EventFormRow 
+                                    key={event.id}
+                                    event={event}
+                                    onSave={updateEvent}
+                                    onCancel={() => setEditingEvent(null)}
+                                /> :
+                                <EventDisplayRow 
+                                    key={event.id}
+                                    event={event}
+                                    onEdit={() => setEditingEvent(event.id)}
+                                    onDelete={deleteEvent}
+                                    formatCurrency={formatCurrency}
+                                />
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+        
+        const EventDisplayRow = ({ event, onEdit, onDelete, formatCurrency }) => {
+            const StatusIcon = { 'pago': CheckCircle, 'pendente': AlertCircle, 'em aberto': Circle }[event.status];
+            const statusColor = { 'pago': 'text-green-400', 'pendente': 'text-yellow-400', 'em aberto': 'text-red-400' }[event.status];
+            const remainingValue = (Number(event.totalValue) || 0) - (Number(event.paidValue) || 0);
+            const date = new Date(event.date + 'T00:00:00-03:00');
+
+            return (
+                <tr className="border-b border-gray-800 hover:bg-gray-800/50">
+                    <td className="px-4 py-3">
+                        <div className="font-bold">{String(date.getDate()).padStart(2, '0')}/{String(date.getMonth() + 1).padStart(2, '0')}</div>
+                        <div className="text-xs text-gray-400">{event.startTime} - {event.endTime}</div>
+                    </td>
+                    <td className="px-4 py-3">{event.location}</td>
+                    <td className="px-4 py-3">
+                        <div>{formatCurrency(event.totalValue)}</div>
+                        <div className="text-xs text-yellow-400">Falta: {formatCurrency(remainingValue)}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                        <span className={`flex items-center gap-2 ${statusColor}`}>
+                            <StatusIcon s={16} /> {event.status}
+                        </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                        <button onClick={onEdit} className="p-2 text-gray-400 hover:text-white"><Edit3 s={16}/></button>
+                        <button onClick={() => onDelete(event.id)} className="p-2 text-gray-400 hover:text-red-500"><X s={16}/></button>
+                    </td>
+                </tr>
+            );
+        };
+        
+        const EventFormRow = ({ event, onSave, onCancel }) => {
+            const [data, setData] = useState(event);
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setData(prev => ({ ...prev, [name]: value }));
+            };
+
+            return (
+                 <tr className="border-b border-gray-800 bg-gray-800/50">
+                    <td colSpan="5" className="p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                           <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                           <input name="location" placeholder="Local" value={data.location} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                           <input name="totalValue" type="number" placeholder="Valor Total" value={data.totalValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                           <input name="paidValue" type="number" placeholder="Valor Pago" value={data.paidValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                           <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                           <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
+                           <select name="status" value={data.status} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full">
+                               <option value="em aberto">Em Aberto</option>
+                               <option value="pendente">Pendente</option>
+                               <option value="pago">Pago</option>
+                           </select>
+                           <textarea name="observations" placeholder="Observações" value={data.observations} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full md:col-span-2 lg:col-span-4" rows="2"></textarea>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-4">
+                           <button onClick={onCancel} className="bg-gray-600 px-4 py-2 rounded hover:bg-gray-500">Cancelar</button>
+                           <button onClick={() => onSave(event.id, data)} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">Salvar</button>
+                        </div>
+                    </td>
+                </tr>
+            );
+        };
+
+        const EventModal = ({ onClose, onSave, title, initialData }) => {
+            const [data, setData] = useState(initialData || {
+                date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: ''
+            });
+
+            const handleChange = e => {
+                const { name, value } = e.target;
+                setData(prev => ({ ...prev, [name]: value }));
+            };
+
+            const handleSave = () => {
+                const eventData = {
+                    ...data,
+                    totalValue: parseFloat(data.totalValue) || 0,
+                    paidValue: parseFloat(data.paidValue) || 0,
+                };
+                onSave(eventData);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">{title}</h2>
+                            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white"><X /></button>
+                        </div>
+                        <div className="space-y-4">
+                             <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required/>
+                             <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required />
+                             <div className="grid grid-cols-2 gap-4">
+                                <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                                <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                             </div>
+                             <div className="grid grid-cols-2 gap-4">
+                                <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                                <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
+                             </div>
+                             <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full">
+                                <option value="em aberto">Em Aberto</option>
+                                <option value="pendente">Pendente</option>
+                                <option value="pago">Pago</option>
+                            </select>
+                            <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea>
+                        </div>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600 transition-colors">Cancelar</button>
+                            <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors">Salvar Evento</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                <div className="bg-gray-900 border border-red-500/50 rounded-xl p-6 w-full max-w-md modal-fade-in text-center">
+                    <AlertCircle s={40} c="text-red-500 mx-auto mb-4" />
+                    <h2 className="text-xl font-bold mb-2">{title}</h2>
+                    <p className="text-gray-400 mb-6">{message}</p>
+                    <div className="flex justify-center gap-4">
+                        <button onClick={onCancel} className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600">Cancelar</button>
+                        <button onClick={onConfirm} className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-500 font-bold">Confirmar</button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const Footer = ({ onClearAll }) => (
+            <footer className="text-center mt-8">
+                <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline">
+                    Limpar toda a agenda
+                </button>
+                <p className="text-xs text-gray-600 mt-2">Desenvolvido com ❤️ para DJ MK</p>
+            </footer>
+        );
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<DJAgendaApp />);
+
+    </script>
+</body>
+</html>
 
-    <div id="root"></div>
-
-
-
-    <script type="text/babel">
-
-        const { useState, useEffect } = React;
-
-
-
-        // Lucide React Icons
-
-        const Calendar = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-
-                <line x1="16" y1="2" x2="16" y2="6"/>
-
-                <line x1="8" y1="2" x2="8" y2="6"/>
-
-                <line x1="3" y1="10" x2="21" y2="10"/>
-
-            </svg>
-
-        );
-
-
-
-        const Clock = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <circle cx="12" cy="12" r="10"/>
-
-                <polyline points="12,6 12,12 16,14"/>
-
-            </svg>
-
-        );
-
-
-
-        const MapPin = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-
-                <circle cx="12" cy="10" r="3"/>
-
-            </svg>
-
-        );
-
-
-
-        const DollarSign = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <line x1="12" y1="1" x2="12" y2="23"/>
-
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-
-            </svg>
-
-        );
-
-
-
-        const Plus = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <line x1="12" y1="5" x2="12" y2="19"/>
-
-                <line x1="5" y1="12" x2="19" y2="12"/>
-
-            </svg>
-
-        );
-
-
-
-        const Edit3 = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <path d="M12 20h9"/>
-
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-
-            </svg>
-
-        );
-
-
-
-        const Save = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-
-                <polyline points="17,21 17,13 7,13 7,21"/>
-
-                <polyline points="7,3 7,8 15,8"/>
-
-            </svg>
-
-        );
-
-
-
-        const X = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <line x1="18" y1="6" x2="6" y2="18"/>
-
-                <line x1="6" y1="6" x2="18" y2="18"/>
-
-            </svg>
-
-        );
-
-
-
-        const CheckCircle = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-
-                <polyline points="22,4 12,14.01 9,11.01"/>
-
-            </svg>
-
-        );
-
-
-
-        const AlertCircle = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <circle cx="12" cy="12" r="10"/>
-
-                <line x1="12" y1="8" x2="12" y2="12"/>
-
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-
-            </svg>
-
-        );
-
-
-
-        const Circle = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <circle cx="12" cy="12" r="10"/>
-
-            </svg>
-
-        );
-
-
-
-        const LogOut = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-
-                <polyline points="16,17 21,12 16,7"/>
-
-                <line x1="21" y1="12" x2="9" y2="12"/>
-
-            </svg>
-
-        );
-
-
-
-        const User = ({ size = 20, className = "" }) => (
-
-            <svg className={`lucide ${className}`} width={size} height={size} viewBox="0 0 24 24">
-
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-
-                <circle cx="12" cy="7" r="4"/>
-
-            </svg>
-
-        );
-
-
-
-        // Login Component
-
-        function LoginScreen() {
-
-            const [isLoading, setIsLoading] = useState(false);
-
-
-
-            const handleGoogleLogin = async () => {
-
-                setIsLoading(true);
-
-                try {
-
-                    if (!window.firebaseService) {
-
-                        throw new Error('Firebase não foi inicializado. Recarregue a página.');
-
-                    }
-
-                    
-
-                    await window.firebaseService.signInWithGoogle();
-
-                } catch (error) {
-
-                    console.error('Erro no login:', error);
-
-                    alert(`Erro: ${error.message}`);
-
-                } finally {
-
-                    setIsLoading(false);
-
-                }
-
-            };
-
-
-
-            return (
-
-                <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center p-4">
-
-                    <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 max-w-md w-full shadow-2xl">
-
-                        <div className="text-center">
-
-                            <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent mb-2">
-
-                                DJ MK
-
-                            </h1>
-
-                            <p className="text-gray-400 text-lg mb-8">Agenda Profissional</p>
-
-                            <div className="w-24 h-1 bg-gradient-to-r from-yellow-500 to-yellow-300 mx-auto mb-8"></div>
-
-                            
-
-                            <div className="mb-6">
-
-                                <User className="text-gray-400 mx-auto mb-4" size={48} />
-
-                                <h2 className="text-white text-xl font-semibold mb-2">Acesso Restrito</h2>
-
-                                <p className="text-gray-400 text-sm">
-
-                                    Faça login com sua conta Google para acessar sua agenda profissional
-
-                                </p>
-
-                            </div>
-
-                            
-
-                            <button
-
-                                onClick={handleGoogleLogin}
-
-                                disabled={isLoading}
-
-                                className="w-full bg-white hover:bg-gray-100 text-gray-800 font-semibold py-4 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-
-                            >
-
-                                {isLoading ? (
-
-                                    <>
-
-                                        <div className="animate-spin w-5 h-5 border-2 border-gray-800 border-t-transparent rounded-full"></div>
-
-                                        Conectando...
-
-                                    </>
-
-                                ) : (
-
-                                    <>
-
-                                        <svg className="w-5 h-5" viewBox="0 0 24 24">
-
-                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-
-                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-
-                                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-
-                                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-
-                                        </svg>
-
-                                        Entrar com Google
-
-                                    </>
-
-                                )}
-
-                            </button>
-
-                            
-
-                            <p className="text-gray-500 text-xs mt-4">
-
-                                Seus dados ficam seguros e protegidos pelo Firebase
-
-                            </p>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            );
-
-        }
-
-
-
-        // Main DJ Agenda Component
-
-        function DJAgenda() {
-
-            const [user, setUser] = useState(null);
-
-            const [events, setEvents] = useState([]);
-
-            const [editingEvent, setEditingEvent] = useState(null);
-
-            const [newEvent, setNewEvent] = useState({
-
-                date: '',
-
-                startTime: '',
-
-                endTime: '',
-
-                location: '',
-
-                totalValue: '',
-
-                paidValue: '',
-
-                status: 'em aberto',
-
-                observations: ''
-
-            });
-
-            const [isAddingEvent, setIsAddingEvent] = useState(false);
-
-            const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-
-            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-
-            const [isLoading, setIsLoading] = useState(true);
-
-            const [saveStatus, setSaveStatus] = useState('saved');
-
-            const [showClearConfirmation, setShowClearConfirmation] = useState(false);
-
-
-
-            const statusOptions = ['pago', 'pendente', 'em aberto'];
-
-            const statusColors = {
-
-                'pago': 'text-green-400',
-
-                'pendente': 'text-yellow-400',
-
-                'em aberto': 'text-red-400'
-
-            };
-
-
-
-            const statusIcons = {
-
-                'pago': CheckCircle,
-
-                'pendente': AlertCircle,
-
-                'em aberto': Circle
-
-            };
-
-
-
-            const monthNames = [
-
-                'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-
-                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-
-            ];
-
-
-
-            useEffect(() => {
-
-                // Aguardar Firebase Service estar pronto
-
-                const checkFirebaseReady = () => {
-
-                    if (!window.firebaseService) {
-
-                        setTimeout(checkFirebaseReady, 500);
-
-                        return;
-
-                    }
-
-
-
-                    const unsubscribe = window.firebaseService.onAuthChange((user) => {
-
-                        console.log('👤 Auth state changed:', user ? user.email : 'No user');
-
-                        setUser(user);
-
-                        setIsLoading(false);
-
-                        
-
-                        if (user) {
-
-                            loadEvents();
-
-                        }
-
-                    });
-
-
-
-                    return unsubscribe;
-
-                };
-
-
-
-                const unsubscribe = checkFirebaseReady();
-
-                
-
-                return () => {
-
-                    if (unsubscribe && typeof unsubscribe === 'function') {
-
-                        unsubscribe();
-
-                    }
-
-                };
-
-            }, []);
-
-
-
-            const loadEvents = async () => {
-
-                if (!window.firebaseService) return;
-
-                
-
-                setIsLoading(true);
-
-                try {
-
-                    const eventsData = await window.firebaseService.getAllEvents();
-
-                    setEvents(eventsData);
-
-                } catch (error) {
-
-                    console.error('Error loading events:', error);
-
-                    alert('Erro ao carregar eventos. Tente recarregar a página.');
-
-                } finally {
-
-                    setIsLoading(false);
-
-                }
-
-            };
-
-
-
-            const handleLogout = async () => {
-
-                try {
-
-                    await window.firebaseService.signOut();
-
-                } catch (error) {
-
-                    console.error('Erro no logout:', error);
-
-                }
-
-            };
-
-
-
-            const calculateRemainingValue = (total, paid) => {
-
-                const totalNum = parseFloat(total) || 0;
-
-                const paidNum = parseFloat(paid) || 0;
-
-                const remaining = totalNum - paidNum;
-
-                return Math.max(0, remaining);
-
-            };
-
-
-
-            const formatCurrency = (value) => {
-
-                return new Intl.NumberFormat('pt-BR', {
-
-                    style: 'currency',
-
-                    currency: 'BRL'
-
-                }).format(value || 0);
-
-            };
-
-
-
-            const addEvent = async () => {
-
-                if (newEvent.date && newEvent.location) {
-
-                    setSaveStatus('saving');
-
-                    try {
-
-                        const eventData = {
-
-                            ...newEvent,
-
-                            totalValue: parseFloat(newEvent.totalValue) || 0,
-
-                            paidValue: parseFloat(newEvent.paidValue) || 0
-
-                        };
-
-                        
-
-                        const savedEvent = await window.firebaseService.addEvent(eventData);
-
-                        setEvents(prev => [...prev, savedEvent]);
-
-                        
-
-                        setNewEvent({
-
-                            date: '',
-
-                            startTime: '',
-
-                            endTime: '',
-
-                            location: '',
-
-                            totalValue: '',
-
-                            paidValue: '',
-
-                            status: 'em aberto',
-
-                            observations: ''
-
-                        });
-
-                        setIsAddingEvent(false);
-
-                        setSaveStatus('saved');
-
-                        
-
-                        setTimeout(() => setSaveStatus('saved'), 2000);
-
-                    } catch (error) {
-
-                        console.error('Error adding event:', error);
-
-                        setSaveStatus('error');
-
-                        alert('Erro ao adicionar evento. Tente novamente.');
-
-                    }
-
-                }
-
-            };
-
-
-
-            const updateEvent = async (id, updatedEvent) => {
-
-                setSaveStatus('saving');
-
-                try {
-
-                    const eventData = {
-
-                        ...updatedEvent,
-
-                        totalValue: parseFloat(updatedEvent.totalValue) || 0,
-
-                        paidValue: parseFloat(updatedEvent.paidValue) || 0
-
-                    };
-
-                    
-
-                    await window.firebaseService.updateEvent(id, eventData);
-
-                    setEvents(events.map(event => 
-
-                        event.id === id ? { ...eventData, id } : event
-
-                    ));
-
-                    setEditingEvent(null);
-
-                    setSaveStatus('saved');
-
-                    
-
-                    setTimeout(() => setSaveStatus('saved'), 2000);
-
-                } catch (error) {
-
-                    console.error('Error updating event:', error);
-
-                    setSaveStatus('error');
-
-                    alert('Erro ao atualizar evento. Tente novamente.');
-
-                }
-
-            };
-
-
-
-            const deleteEvent = async (id) => {
-
-                setSaveStatus('saving');
-
-                try {
-
-                    await window.firebaseService.deleteEvent(id);
-
-                    setEvents(events.filter(event => event.id !== id));
-
-                    setSaveStatus('saved');
-
-                    
-
-                    setTimeout(() => setSaveStatus('saved'), 2000);
-
-                } catch (error) {
-
-                    console.error('Error deleting event:', error);
-
-                    setSaveStatus('error');
-
-                    alert('Erro ao excluir evento. Tente novamente.');
-
-                }
-
-            };
-
-
-
-            const clearAllData = async () => {
-
-                setSaveStatus('saving');
-
-                try {
-
-                    await window.firebaseService.clearAllEvents();
-
-                    setEvents([]);
-
-                    setShowClearConfirmation(false);
-
-                    setSaveStatus('saved');
-
-                    
-
-                    setTimeout(() => setSaveStatus('saved'), 2000);
-
-                } catch (error) {
-
-                    console.error('Error clearing all data:', error);
-
-                    setSaveStatus('error');
-
-                    alert('Erro ao limpar agenda. Tente novamente.');
-
-                }
-
-            };
-
-
-
-            const getEventsForMonth = () => {
-
-                return events.filter(event => {
-
-                    const eventDate = new Date(event.date);
-
-                    return eventDate.getMonth() === currentMonth && eventDate.getFullYear() === currentYear;
-
-                }).sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            };
-
-
-
-            const getTotalRevenue = () => {
-
-                return events.reduce((total, event) => {
-
-                    const value = parseFloat(event.totalValue) || 0;
-
-                    return total + value;
-
-                }, 0);
-
-            };
-
-
-
-            const getTotalPaid = () => {
-
-                return events.reduce((total, event) => {
-
-                    const value = parseFloat(event.paidValue) || 0;
-
-                    return total + value;
-
-                }, 0);
-
-            };
-
-
-
-            const getTotalPending = () => {
-
-                const revenue = getTotalRevenue();
-
-                const paid = getTotalPaid();
-
-                return Math.max(0, revenue - paid);
-
-            };
-
-
-
-            if (!user) {
-
-                return <LoginScreen />;
-
-            }
-
-
-
-            if (isLoading) {
-
-                return (
-
-                    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center">
-
-                        <div className="text-center">
-
-                            <div className="animate-spin w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-4"></div>
-
-                            <h2 className="text-2xl font-bold text-white mb-2">DJ MK</h2>
-
-                            <p className="text-gray-400 mb-2">Carregando agenda...</p>
-
-                        </div>
-
-                    </div>
-
-                );
-
-            }
-
-
-
-            const EventRow = ({ event, isEditing }) => {
-
-                const [editData, setEditData] = useState(event);
-
-                const StatusIcon = statusIcons[event.status];
-
-
-
-                if (isEditing) {
-
-                    return (
-
-                        <tr className="border-b border-gray-800 bg-gray-900/50">
-
-                            <td className="px-4 py-3">
-
-                                <span className="text-gray-300 text-sm">
-
-                                    {formatCurrency(calculateRemainingValue(editData.totalValue, editData.paidValue))}
-
-                                </span>
-
-                            </td>
-
-         
