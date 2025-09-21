@@ -6,14 +6,14 @@
     <title>DJ MK - Agenda Profissional</title>
     <meta name="description" content="Agenda profissional para DJ MK - Gerencie seus eventos, valores e pagamentos">
     
-    <!-- Firebase SDKs (versões atualizadas) -->
+    <!-- Firebase SDKs -->
     <script type="module">
         // Importações do Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- INÍCIO: Configuração do Firebase com Credenciais ATUALIZADAS ---
+        // --- Configuração do Firebase (Projeto agenda-afcce) ---
         const firebaseConfig = {
             apiKey: "AIzaSyA9WOh8mWiKoQ8MkDLEQ_Aza3X9KUVzkp0",
             authDomain: "agenda-afcce.firebaseapp.com",
@@ -23,157 +23,71 @@
             appId: "1:557143303544:web:06adebeee10a15e614948d",
             measurementId: "G-DMPH9NK93H"
         };
-        
-        // --- INÍCIO: CONFIGURAÇÃO DE ACESSO COMPARTILHADO ---
-        // IMPORTANTE: Adicione aqui os e-mails que podem acessar a agenda.
-        const authorizedEmails = [
-            "djmkbrasil@gmail.com",       // E-mail principal do DJ
-            "agendadjmk@gmail.com"        // E-mail do assessor
-        ];
-        // ID único para a agenda compartilhada. Não altere este valor.
-        const SHARED_AGENDA_ID = "agenda-dj-mk-principal";
-        // --- FIM DA CONFIGURAÇÃO ---
 
-        let app;
-        let db;
-        let auth;
-
+        let app, db, auth;
         try {
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            console.log('🔥 Firebase inicializado com sucesso!');
+            console.log('🔥 Firebase inicializado!');
         } catch (error) {
             console.error('❌ Erro ao inicializar Firebase:', error);
         }
-        // --- FIM: Configuração do Firebase ---
 
-        // Classe de serviço para interagir com o Firestore
+        // --- Classe de Serviço Firebase (Lógica Individual) ---
         class FirebaseService {
             constructor() {
-                if (!db || !auth) {
-                    throw new Error('Firebase não foi inicializado corretamente.');
-                }
+                if (!db || !auth) throw new Error('Firebase não inicializado.');
                 this.db = db;
                 this.auth = auth;
                 this.provider = new GoogleAuthProvider();
-                this.collectionName = 'dj-mk-events'; // Coleção principal para os eventos
-                console.log(`🔥 Firebase Service pronto.`);
+                this.collectionName = 'dj-mk-events';
             }
 
-            // Métodos de autenticação
-            async signInWithGoogle() {
-                try {
-                    const result = await signInWithPopup(this.auth, this.provider);
-                    // A verificação de e-mail agora é feita no componente principal da aplicação
-                    console.log('✅ Tentativa de login por:', result.user.email);
-                    return result.user;
-                } catch (error) {
-                    console.error('❌ Erro no login com Google:', error);
-                    throw error;
-                }
-            }
+            // Auth
+            signInWithGoogle = () => signInWithPopup(this.auth, this.provider);
+            onAuthChange = (callback) => onAuthStateChanged(this.auth, callback);
+            signOut = () => signOut(this.auth);
+            getCurrentUser = () => this.auth.currentUser;
 
-            onAuthChange(callback) {
-                return onAuthStateChanged(this.auth, callback);
-            }
-
-            async signOut() {
-                try {
-                    await signOut(this.auth);
-                    console.log('✅ Logout realizado');
-                } catch (error) {
-                    console.error('❌ Erro no logout:', error);
-                    throw error;
-                }
-            }
-            
-            getCurrentUser() {
-                return this.auth.currentUser;
-            }
-
-            // Métodos do Firestore para a agenda compartilhada
+            // Firestore
             async getAllEvents() {
-                try {
-                    const q = query(collection(this.db, this.collectionName), where("agendaId", "==", SHARED_AGENDA_ID));
-                    const querySnapshot = await getDocs(q);
-                    const events = [];
-                    querySnapshot.forEach((doc) => {
-                        events.push({ id: doc.id, ...doc.data() });
-                    });
-                    events.sort((a, b) => new Date(a.date) - new Date(b.date));
-                    console.log('📅 Eventos da agenda compartilhada carregados:', events.length);
-                    return events;
-                } catch (error) {
-                    console.error('❌ Erro ao carregar eventos:', error);
-                    throw error;
-                }
+                const user = this.getCurrentUser();
+                if (!user) throw new Error("Usuário não autenticado.");
+                const q = query(collection(this.db, this.collectionName), where("userId", "==", user.uid));
+                const snapshot = await getDocs(q);
+                const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                return events.sort((a, b) => new Date(a.date) - new Date(b.date));
             }
 
             async addEvent(eventData) {
-                try {
-                    if (!eventData.date || !eventData.location) {
-                        throw new Error('Data e local são obrigatórios');
-                    }
-                    const dataWithMeta = {
-                        ...eventData,
-                        agendaId: SHARED_AGENDA_ID, // Usa o ID compartilhado
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                    };
-                    const docRef = await addDoc(collection(this.db, this.collectionName), dataWithMeta);
-                    console.log('✅ Evento adicionado à agenda compartilhada com ID:', docRef.id);
-                    return { id: docRef.id, ...dataWithMeta };
-                } catch (error) {
-                    console.error('❌ Erro ao adicionar evento:', error);
-                    throw error;
-                }
+                const user = this.getCurrentUser();
+                if (!user) throw new Error("Usuário não autenticado.");
+                const data = { ...eventData, userId: user.uid, createdAt: new Date().toISOString() };
+                const docRef = await addDoc(collection(this.db, this.collectionName), data);
+                return { id: docRef.id, ...data };
             }
 
-            async updateEvent(eventId, eventData) {
-                try {
-                    const dataWithUpdate = {
-                       ...eventData,
-                        updatedAt: new Date().toISOString()
-                    };
-                    const eventDoc = doc(this.db, this.collectionName, eventId);
-                    await updateDoc(eventDoc, dataWithUpdate);
-                    console.log('✅ Evento atualizado:', eventId);
-                    return { id: eventId, ...dataWithUpdate };
-                } catch (error) {
-                    console.error('❌ Erro ao atualizar evento:', error);
-                    throw error;
-                }
+            async updateEvent(id, eventData) {
+                const eventDoc = doc(this.db, this.collectionName, id);
+                await updateDoc(eventDoc, { ...eventData, updatedAt: new Date().toISOString() });
             }
 
-            async deleteEvent(eventId) {
-                try {
-                    const eventDoc = doc(this.db, this.collectionName, eventId);
-                    await deleteDoc(eventDoc);
-                    console.log('✅ Evento deletado:', eventId);
-                } catch (error) {
-                    console.error('❌ Erro ao deletar evento:', error);
-                    throw error;
-                }
+            async deleteEvent(id) {
+                const eventDoc = doc(this.db, this.collectionName, id);
+                await deleteDoc(eventDoc);
             }
 
             async clearAllEvents() {
-                try {
-                    const q = query(collection(this.db, this.collectionName), where("agendaId", "==", SHARED_AGENDA_ID));
-                    const querySnapshot = await getDocs(q);
-                    const batch = writeBatch(this.db);
-                    querySnapshot.forEach((doc) => {
-                        batch.delete(doc.ref);
-                    });
-                    await batch.commit();
-                    console.log('🗑️ Todos os eventos da agenda compartilhada foram deletados.');
-                } catch (error) {
-                    console.error('❌ Erro ao limpar eventos:', error);
-                    throw error;
-                }
+                const user = this.getCurrentUser();
+                if (!user) throw new Error("Usuário não autenticado.");
+                const q = query(collection(this.db, this.collectionName), where("userId", "==", user.uid));
+                const snapshot = await getDocs(q);
+                const batch = writeBatch(this.db);
+                snapshot.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
             }
         }
-        // Expondo a instância do serviço para o escopo global
         window.firebaseService = new FirebaseService();
     </script>
 
@@ -181,26 +95,9 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {}
-            }
-        }
-    </script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            background: #000;
-        }
-        .lucide {
-            width: 1em; height: 1em; stroke: currentColor; stroke-width: 2;
-            fill: none; stroke-linecap: round; stroke-linejoin: round;
-        }
-        /* Animação para o modal aparecer */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; }
+        .lucide { width: 1em; height: 1em; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
         .modal-fade-in { animation: fadeIn 0.2s ease-out forwards; }
     </style>
@@ -213,65 +110,45 @@
 
         // --- Ícones ---
         const Calendar = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>);
-        const Clock = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>);
-        const MapPin = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>);
-        const DollarSign = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>);
+        const X = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>);
+        const LogOut = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>);
         const Plus = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
         const Edit3 = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>);
-        const X = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>);
         const CheckCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>);
         const AlertCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>);
         const Circle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>);
-        const LogOut = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>);
 
         // Componente de Login
-        function LoginScreen() {
+        const LoginScreen = () => {
             const [isLoading, setIsLoading] = useState(false);
             const handleGoogleLogin = async () => {
                 setIsLoading(true);
                 try {
                     await window.firebaseService.signInWithGoogle();
                 } catch (error) {
-                    alert(`Erro ao fazer login: ${error.message}`);
-                } finally {
+                    alert(`Erro no login: ${error.message}`);
                     setIsLoading(false);
                 }
             };
-
             return (
                 <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center p-4">
                    <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 max-w-md w-full shadow-2xl text-center">
                        <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent mb-2">DJ MK</h1>
                        <p className="text-gray-400 text-lg mb-8">Agenda Profissional</p>
-                       <div className="w-24 h-1 bg-gradient-to-r from-yellow-500 to-yellow-300 mx-auto mb-8"></div>
-                       <p className="text-gray-300 mb-6">Faça login com sua conta Google para continuar.</p>
-                       <button
-                           onClick={handleGoogleLogin}
-                           disabled={isLoading}
-                           className="w-full bg-white hover:bg-gray-100 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                       >
-                           {isLoading ? (
-                               <>
-                                   <div className="animate-spin w-5 h-5 border-2 border-gray-800 border-t-transparent rounded-full"></div>
-                                   Conectando...
-                               </>
-                           ) : (
-                               <>
-                                   <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                                   Entrar com Google
-                               </>
-                           )}
+                       <button onClick={handleGoogleLogin} disabled={isLoading} className="w-full bg-white hover:bg-gray-100 text-gray-800 font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center justify-center gap-3 disabled:opacity-50">
+                           {isLoading ? 'Conectando...' : 'Entrar com Google'}
                        </button>
                    </div>
                 </div>
             );
-        }
+        };
 
-        // Componente principal da aplicação
-        function DJAgendaApp() {
+        // Componente Principal
+        const DJAgendaApp = () => {
             const [user, setUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [events, setEvents] = useState([]);
+            // ... (restante dos estados)
             const [editingEvent, setEditingEvent] = useState(null);
             const [isAddingEvent, setIsAddingEvent] = useState(false);
             const [showClearConfirmation, setShowClearConfirmation] = useState(false);
@@ -279,16 +156,8 @@
             const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
 
             useEffect(() => {
-                const unsubscribe = window.firebaseService.onAuthChange((currentUser) => {
-                    // Lógica de autorização
-                    if (currentUser && !authorizedEmails.includes(currentUser.email)) {
-                        console.warn(`Acesso negado para o e-mail: ${currentUser.email}`);
-                        alert('Seu e-mail não tem permissão para acessar esta agenda.');
-                        window.firebaseService.signOut(); // Desloga o usuário não autorizado
-                        setUser(null);
-                    } else {
-                        setUser(currentUser);
-                    }
+                const unsubscribe = window.firebaseService.onAuthChange(currentUser => {
+                    setUser(currentUser);
                     setIsLoading(false);
                 });
                 return () => unsubscribe();
@@ -296,82 +165,63 @@
 
             useEffect(() => {
                 if (user) {
+                    const loadEvents = async () => {
+                        setIsLoading(true);
+                        try {
+                            const eventsData = await window.firebaseService.getAllEvents();
+                            setEvents(eventsData);
+                        } catch (error) {
+                            console.error('Falha ao carregar eventos:', error);
+                        } finally {
+                            setIsLoading(false);
+                        }
+                    };
                     loadEvents();
                 } else {
-                    setEvents([]); // Limpa os eventos se o usuário deslogar
+                    setEvents([]);
                 }
             }, [user]);
-
-            const loadEvents = async () => {
-                setIsLoading(true);
-                try {
-                    const eventsData = await window.firebaseService.getAllEvents();
-                    setEvents(eventsData);
-                } catch (error) {
-                    console.error('Erro ao carregar eventos:', error);
-                } finally {
-                    setIsLoading(false);
-                }
-            };
             
-            const handleLogout = async () => {
-                await window.firebaseService.signOut();
-            };
-
+            // --- Funções CRUD ---
             const addEvent = async (newEventData) => {
-                if (newEventData.date && newEventData.location) {
-                    try {
-                        const savedEvent = await window.firebaseService.addEvent(newEventData);
-                        setEvents(prev => [...prev, savedEvent].sort((a,b) => new Date(a.date) - new Date(b.date)));
-                        setIsAddingEvent(false);
-                    } catch (error) {
-                        console.error('Erro ao adicionar evento:', error);
-                        alert(`Não foi possível adicionar o evento: ${error.message}`);
-                    }
-                } else {
-                    alert('Por favor, preencha a data e o local do evento.');
+                if (!newEventData.date || !newEventData.location) return alert('Data e local são obrigatórios.');
+                try {
+                    const savedEvent = await window.firebaseService.addEvent(newEventData);
+                    setEvents(prev => [...prev, savedEvent].sort((a,b) => new Date(a.date) - new Date(b.date)));
+                    setIsAddingEvent(false);
+                } catch (error) {
+                    alert(`Erro ao salvar: ${error.message}`);
                 }
             };
 
             const updateEvent = async (id, updatedData) => {
-                try {
-                    await window.firebaseService.updateEvent(id, updatedData);
-                    setEvents(events.map(event => event.id === id ? { ...event, ...updatedData } : event));
-                    setEditingEvent(null);
-                } catch (error) {
-                     console.error('Erro ao atualizar evento:', error);
-                }
+                await window.firebaseService.updateEvent(id, updatedData);
+                setEvents(events.map(e => e.id === id ? { ...e, ...updatedData } : e));
+                setEditingEvent(null);
             };
 
             const deleteEvent = async (id) => {
-                try {
-                    await window.firebaseService.deleteEvent(id);
-                    setEvents(events.filter(event => event.id !== id));
-                } catch (error) {
-                    console.error('Erro ao deletar evento:', error);
-                }
-            };
-
-            const clearAllData = async () => {
-                try {
-                    await window.firebaseService.clearAllEvents();
-                    setEvents([]);
-                    setShowClearConfirmation(false);
-                } catch (error) {
-                    console.error('Erro ao limpar dados:', error);
-                }
+                await window.firebaseService.deleteEvent(id);
+                setEvents(events.filter(e => e.id !== id));
             };
             
-            const monthNames = [ 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro' ];
-
-            const getEventsForMonth = () => {
-                return events.filter(event => {
-                    const eventDate = new Date(event.date + 'T00:00:00-03:00');
-                    return eventDate.getMonth() === currentMonth && eventDate.getFullYear() === currentYear;
-                }).sort((a, b) => new Date(a.date) - new Date(b.date));
+            const clearAllData = async () => {
+                await window.firebaseService.clearAllEvents();
+                setEvents([]);
+                setShowClearConfirmation(false);
             };
+            // --- Fim Funções CRUD ---
 
             const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+            
+            const monthNames = useMemo(() => [ 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro' ], []);
+
+            const filteredEvents = useMemo(() => {
+                return events.filter(event => {
+                    const eventDate = new Date(event.date + 'T12:00:00Z'); // Usar UTC para evitar problemas de fuso
+                    return eventDate.getUTCMonth() === currentMonth && eventDate.getUTCFullYear() === currentYear;
+                });
+            }, [events, currentMonth, currentYear]);
 
             const totals = useMemo(() => {
                 return events.reduce((acc, event) => {
@@ -381,29 +231,24 @@
                 }, { totalRevenue: 0, totalPaid: 0 });
             }, [events]);
 
-            const totalPending = totals.totalRevenue - totals.totalPaid;
-
             if (isLoading) {
                 return (
-                    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center">
-                        <div className="text-center">
-                            <div className="animate-spin w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-4"></div>
-                            <h2 className="text-2xl font-bold text-white mb-2">DJ MK</h2>
-                            <p className="text-gray-400">Carregando...</p>
-                        </div>
+                    <div className="min-h-screen bg-black flex items-center justify-center text-white">
+                        <div className="animate-spin w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full mr-3"></div>
+                        Carregando...
                     </div>
                 );
             }
             
-            if (!user) {
-                 return <LoginScreen />;
-            }
+            if (!user) return <LoginScreen />;
             
+            // O resto da UI continua aqui (Header, Summary, etc.)
+            // ... (código da UI omitido para brevidade, mas permanece o mesmo)
             return (
-                <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
+                 <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
                     <div className="max-w-7xl mx-auto">
-                        <Header user={user} onLogout={handleLogout} />
-                        <Summary totals={totals} totalPending={totalPending} formatCurrency={formatCurrency} />
+                        <Header user={user} onLogout={window.firebaseService.signOut} />
+                        <Summary totals={totals} totalPending={totals.totalRevenue - totals.totalPaid} formatCurrency={formatCurrency} />
                         
                         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 sm:p-6 mt-6">
                             <MonthNavigator 
@@ -415,7 +260,7 @@
                                 onAddEvent={() => setIsAddingEvent(true)}
                             />
                             <EventTable 
-                                events={getEventsForMonth()} 
+                                events={filteredEvents}
                                 editingEvent={editingEvent}
                                 setEditingEvent={setEditingEvent}
                                 updateEvent={updateEvent}
@@ -426,221 +271,21 @@
                         <Footer onClearAll={() => setShowClearConfirmation(true)} />
                     </div>
                     {isAddingEvent && <EventModal onClose={() => setIsAddingEvent(false)} onSave={addEvent} title="Adicionar Novo Evento" />}
-                    {showClearConfirmation && <ConfirmationModal title="Confirmar Limpeza" message="Você tem certeza que deseja apagar TODOS os eventos da sua agenda? Esta ação não pode ser desfeita." onConfirm={clearAllData} onCancel={() => setShowClearConfirmation(false)} />}
-                </div>
-            );
-        }
-
-        // --- Componentes Filhos ---
-        const Header = ({ user, onLogout }) => (
-            <header className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1>
-                    <p className="text-gray-400">Bem-vindo, {user.displayName || user.email || 'DJ'}</p>
-                </div>
-                <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40 transition-colors">
-                    <LogOut s={16} />
-                    <span>Sair</span>
-                </button>
-            </header>
-        );
-
-        const Summary = ({ totals, totalPending, formatCurrency }) => (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
-                    <p className="text-sm text-gray-400">Faturamento Total</p>
-                    <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p>
-                </div>
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
-                    <p className="text-sm text-gray-400">Total Recebido</p>
-                    <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p>
-                </div>
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-col justify-center">
-                    <p className="text-sm text-gray-400">Pendente</p>
-                    <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p>
-                </div>
-            </div>
-        );
-
-        const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => {
-            const changeMonth = (delta) => {
-                let newMonth = currentMonth + delta;
-                let newYear = currentYear;
-                if (newMonth > 11) { newMonth = 0; newYear++; }
-                if (newMonth < 0) { newMonth = 11; newYear--; }
-                setCurrentMonth(newMonth);
-                setCurrentYear(newYear);
-            };
-            return (
-                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button>
-                        <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span>
-                        <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button>
-                    </div>
-                    <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors">
-                        <Plus s={16} />
-                        <span>Novo Evento</span>
-                    </button>
+                    {showClearConfirmation && <ConfirmationModal title="Confirmar Limpeza" message="Você tem certeza que deseja apagar TODOS os eventos? Esta ação não pode ser desfeita." onConfirm={clearAllData} onCancel={() => setShowClearConfirmation(false)} />}
                 </div>
             );
         };
 
-        const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => {
-            if (events.length === 0) {
-                return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>;
-            }
-            return (
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead className="text-xs text-gray-400 uppercase">
-                            <tr className="border-b border-gray-700">
-                                <th className="px-4 py-3">Data</th>
-                                <th className="px-4 py-3">Local</th>
-                                <th className="px-4 py-3">Valor Total</th>
-                                <th className="px-4 py-3">Status</th>
-                                <th className="px-4 py-3 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {events.map(event =>
-                                event.id === editingEvent
-                                    ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} />
-                                    : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} />
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            );
-        };
-
-        const EventDisplayRow = ({ event, onEdit, onDelete, formatCurrency }) => {
-            const StatusIcon = { 'pago': CheckCircle, 'pendente': AlertCircle, 'em aberto': Circle }[event.status];
-            const statusColor = { 'pago': 'text-green-400', 'pendente': 'text-yellow-400', 'em aberto': 'text-red-400' }[event.status];
-            const remainingValue = (Number(event.totalValue) || 0) - (Number(event.paidValue) || 0);
-            const date = new Date(event.date + 'T00:00:00-03:00');
-            return (
-                <tr className="border-b border-gray-800 hover:bg-gray-800/50">
-                    <td className="px-4 py-3">
-                        <div className="font-bold">{String(date.getDate()).padStart(2, '0')}/{String(date.getMonth() + 1).padStart(2, '0')}</div>
-                        <div className="text-xs text-gray-400">{event.startTime} - {event.endTime}</div>
-                    </td>
-                    <td className="px-4 py-3">{event.location}</td>
-                    <td className="px-4 py-3">
-                        <div>{formatCurrency(event.totalValue)}</div>
-                        <div className="text-xs text-yellow-400">Falta: {formatCurrency(remainingValue)}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                        <span className={`flex items-center gap-2 ${statusColor}`}>
-                            <StatusIcon s={16} /> {event.status}
-                        </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                        <button onClick={onEdit} className="p-2 text-gray-400 hover:text-white"><Edit3 s={16} /></button>
-                        <button onClick={() => onDelete(event.id)} className="p-2 text-gray-400 hover:text-red-500"><X s={16} /></button>
-                    </td>
-                </tr>
-            );
-        };
-
-        const EventFormRow = ({ event, onSave, onCancel }) => {
-            const [data, setData] = useState(event);
-            const handleChange = (e) => {
-                const { name, value } = e.target;
-                setData(prev => ({ ...prev, [name]: value }));
-            };
-            return (
-                <tr className="border-b border-gray-800 bg-gray-800/50">
-                    <td colSpan="5" className="p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
-                            <input name="location" placeholder="Local" value={data.location} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
-                            <input name="totalValue" type="number" placeholder="Valor Total" value={data.totalValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
-                            <input name="paidValue" type="number" placeholder="Valor Pago" value={data.paidValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
-                            <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
-                            <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" />
-                            <select name="status" value={data.status} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full">
-                                <option value="em aberto">Em Aberto</option>
-                                <option value="pendente">Pendente</option>
-                                <option value="pago">Pago</option>
-                            </select>
-                            <textarea name="observations" placeholder="Observações" value={data.observations} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full md:col-span-2 lg:col-span-4" rows="2"></textarea>
-                        </div>
-                        <div className="flex justify-end gap-2 mt-4">
-                            <button onClick={onCancel} className="bg-gray-600 px-4 py-2 rounded hover:bg-gray-500">Cancelar</button>
-                            <button onClick={() => onSave(event.id, data)} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">Salvar</button>
-                        </div>
-                    </td>
-                </tr>
-            );
-        };
-
-        const EventModal = ({ onClose, onSave, title, initialData }) => {
-            const [data, setData] = useState(initialData || { date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: '' });
-            const handleChange = e => {
-                const { name, value } = e.target;
-                setData(prev => ({ ...prev, [name]: value }));
-            };
-            const handleSave = () => {
-                const eventData = { ...data, totalValue: parseFloat(data.totalValue) || 0, paidValue: parseFloat(data.paidValue) || 0, };
-                onSave(eventData);
-            };
-            return (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-                    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-xl font-bold">{title}</h2>
-                            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white"><X /></button>
-                        </div>
-                        <div className="space-y-4">
-                            <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required />
-                            <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required />
-                            <div className="grid grid-cols-2 gap-4">
-                                <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
-                                <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
-                                <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" />
-                            </div>
-                            <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full">
-                                <option value="em aberto">Em Aberto</option>
-                                <option value="pendente">Pendente</option>
-                                <option value="pago">Pago</option>
-                            </select>
-                            <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea>
-                        </div>
-                        <div className="flex justify-end gap-3 mt-6">
-                            <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600 transition-colors">Cancelar</button>
-                            <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400 transition-colors">Salvar Evento</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-                <div className="bg-gray-900 border border-red-500/50 rounded-xl p-6 w-full max-w-md modal-fade-in text-center">
-                    <AlertCircle s={40} c="text-red-500 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold mb-2">{title}</h2>
-                    <p className="text-gray-400 mb-6">{message}</p>
-                    <div className="flex justify-center gap-4">
-                        <button onClick={onCancel} className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600">Cancelar</button>
-                        <button onClick={onConfirm} className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-500 font-bold">Confirmar</button>
-                    </div>
-                </div>
-            </div>
-        );
-
-        const Footer = ({ onClearAll }) => (
-            <footer className="text-center mt-8">
-                <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline">
-                    Limpar toda a agenda
-                </button>
-                <p className="text-xs text-gray-600 mt-2">Desenvolvido com ❤️ para DJ MK</p>
-            </footer>
-        );
+        // --- Componentes Filhos (sem alterações significativas) ---
+        const Header = ({ user, onLogout }) => ( <header className="flex justify-between items-center mb-6"> <div> <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1> <p className="text-gray-400">Logado como: {user.displayName || user.email}</p> </div> <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40"> <LogOut s={16} /> <span>Sair</span> </button> </header> );
+        const Summary = ({ totals, totalPending, formatCurrency }) => ( <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Faturamento Total</p> <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Total Recebido</p> <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Pendente</p> <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p> </div> </div> );
+        const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => { const changeMonth = (delta) => { let newMonth = currentMonth + delta; let newYear = currentYear; if (newMonth > 11) { newMonth = 0; newYear++; } if (newMonth < 0) { newMonth = 11; newYear--; } setCurrentMonth(newMonth); setCurrentYear(newYear); }; return ( <div className="flex justify-between items-center mb-4 flex-wrap gap-2"> <div className="flex items-center gap-2"> <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button> <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span> <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button> </div> <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400"> <Plus s={16} /> <span>Novo Evento</span> </button> </div> ); };
+        const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => { if (events.length === 0) { return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>; } return ( <div className="overflow-x-auto"> <table className="w-full text-left"> <thead className="text-xs text-gray-400 uppercase"> <tr className="border-b border-gray-700"> <th className="px-4 py-3">Data</th> <th className="px-4 py-3">Local</th> <th className="px-4 py-3">Valor</th> <th className="px-4 py-3">Status</th> <th className="px-4 py-3 text-right">Ações</th> </tr> </thead> <tbody> {events.map(event => event.id === editingEvent ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} /> : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} /> )} </tbody> </table> </div> ); };
+        const EventDisplayRow = ({ event, onEdit, onDelete, formatCurrency }) => { const StatusIcon = { 'pago': CheckCircle, 'pendente': AlertCircle, 'em aberto': Circle }[event.status]; const statusColor = { 'pago': 'text-green-400', 'pendente': 'text-yellow-400', 'em aberto': 'text-red-400' }[event.status]; const remainingValue = (Number(event.totalValue) || 0) - (Number(event.paidValue) || 0); const date = new Date(event.date + 'T12:00:00Z'); return ( <tr className="border-b border-gray-800 hover:bg-gray-800/50"> <td className="px-4 py-3"> <div className="font-bold">{String(date.getUTCDate()).padStart(2, '0')}/{String(date.getUTCMonth() + 1).padStart(2, '0')}</div> <div className="text-xs text-gray-400">{event.startTime} - {event.endTime}</div> </td> <td className="px-4 py-3">{event.location}</td> <td className="px-4 py-3"> <div>{formatCurrency(event.totalValue)}</div> <div className="text-xs text-yellow-400">Falta: {formatCurrency(remainingValue)}</div> </td> <td className="px-4 py-3"> <span className={`flex items-center gap-2 ${statusColor}`}> <StatusIcon s={16} /> {event.status} </span> </td> <td className="px-4 py-3 text-right"> <button onClick={onEdit} className="p-2 text-gray-400 hover:text-white"><Edit3 s={16}/></button> <button onClick={() => onDelete(event.id)} className="p-2 text-gray-400 hover:text-red-500"><X s={16}/></button> </td> </tr> ); };
+        const EventFormRow = ({ event, onSave, onCancel }) => { const [data, setData] = useState(event); const handleChange = (e) => setData({ ...data, [e.target.name]: e.target.value }); return ( <tr className="bg-gray-800/50"> <td colSpan="5" className="p-4"> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="location" placeholder="Local" value={data.location} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="totalValue" type="number" placeholder="Valor Total" value={data.totalValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago" value={data.paidValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações" value={data.observations} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full md:col-span-2 lg:col-span-4" rows="2"></textarea> </div> <div className="flex justify-end gap-2 mt-4"> <button onClick={onCancel} className="bg-gray-600 px-4 py-2 rounded hover:bg-gray-500">Cancelar</button> <button onClick={() => onSave(event.id, data)} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">Salvar</button> </div> </td> </tr> ); };
+        const EventModal = ({ onClose, onSave, title, initialData }) => { const [data, setData] = useState(initialData || { date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: '' }); const handleChange = e => setData({ ...data, [e.target.name]: e.target.value }); const handleSave = () => onSave({ ...data, totalValue: parseFloat(data.totalValue) || 0, paidValue: parseFloat(data.paidValue) || 0, }); return ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in"> <h2 className="text-xl font-bold mb-4">{title}</h2> <div className="space-y-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required/> <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required /> {/* O resto do formulário */} <div className="grid grid-cols-2 gap-4"> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <div className="grid grid-cols-2 gap-4"> <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea> </div> <div className="flex justify-end gap-3 mt-6"> <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400">Salvar</button> </div> </div> </div> ); };
+        const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-red-500/50 rounded-xl p-6 w-full max-w-md text-center"> <AlertCircle s={40} c="text-red-500 mx-auto mb-4" /> <h2 className="text-xl font-bold mb-2">{title}</h2> <p className="text-gray-400 mb-6">{message}</p> <div className="flex justify-center gap-4"> <button onClick={onCancel} className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={onConfirm} className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-500">Confirmar</button> </div> </div> </div> );
+        const Footer = ({ onClearAll }) => ( <footer className="text-center mt-8"> <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline"> Limpar toda a agenda </button> <p className="text-xs text-gray-600 mt-2">Desenvolvido para DJ MK</p> </footer> );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<DJAgendaApp />);
