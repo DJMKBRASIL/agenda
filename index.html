@@ -11,16 +11,12 @@
         // Importações do Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, query, writeBatch, arrayUnion, arrayRemove, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- LISTA DE E-MAILS AUTORIZADOS ---
-        // Somente os e-mails nesta lista poderão ver e editar a agenda.
-        const authorizedEmails = [
-            "djmkbrasil@gmail.com",
-            "agendadjmk@gmail.com"
-        ];
+        // --- CONFIGURAÇÃO GLOBAL ---
+        const PRIMARY_ADMIN_EMAIL = "djmkbrasil@gmail.com";
+        const CONFIG_DOC_PATH = "config/authorized_users";
 
-        // --- Configuração do Firebase (Projeto agenda-afcce) ---
         const firebaseConfig = {
             apiKey: "AIzaSyA9WOh8mWiKoQ8MkDLEQ_Aza3X9KUVzkp0",
             authDomain: "agenda-afcce.firebaseapp.com",
@@ -41,7 +37,7 @@
             console.error('❌ Erro ao inicializar Firebase:', error);
         }
 
-        // --- Classe de Serviço Firebase (Lógica COMPARTILHADA) ---
+        // --- Classe de Serviço Firebase (com Gerenciamento de Acesso) ---
         class FirebaseService {
             constructor() {
                 if (!db || !auth) throw new Error('Firebase não inicializado.');
@@ -56,41 +52,45 @@
             onAuthChange = (callback) => onAuthStateChanged(this.auth, callback);
             signOut = () => signOut(this.auth);
             getCurrentUser = () => this.auth.currentUser;
-            isUserAuthorized = () => {
-                const user = this.getCurrentUser();
-                return user && authorizedEmails.includes(user.email);
-            };
+            isUserAdmin = () => this.getCurrentUser()?.email === PRIMARY_ADMIN_EMAIL;
 
-            // Firestore
-            async getAllEvents() {
-                if (!this.isUserAuthorized()) throw new Error("Usuário não autorizado.");
-                // Busca todos os documentos da coleção, pois a permissão é por e-mail.
+            // Gerenciamento de Acesso
+            async getAuthorizedEmails() {
+                const docRef = doc(this.db, CONFIG_DOC_PATH);
+                const docSnap = await getDoc(docRef);
+                return docSnap.exists() ? docSnap.data().emails : [];
+            }
+            
+            async addAuthorizedEmail(email) {
+                 const docRef = doc(this.db, CONFIG_DOC_PATH);
+                 await updateDoc(docRef, { emails: arrayUnion(email) });
+            }
+
+            async removeAuthorizedEmail(email) {
+                const docRef = doc(this.db, CONFIG_DOC_PATH);
+                await updateDoc(docRef, { emails: arrayRemove(email) });
+            }
+            
+             // Firestore CRUD
+            async getAllEvents(authorizedEmails) {
+                const user = this.getCurrentUser();
+                if (!user || !authorizedEmails.includes(user.email)) throw new Error("Usuário não autorizado.");
+                
                 const snapshot = await getDocs(collection(this.db, this.collectionName));
                 const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 return events.sort((a, b) => new Date(a.date) - new Date(b.date));
             }
 
             async addEvent(eventData) {
-                if (!this.isUserAuthorized()) throw new Error("Usuário não autorizado.");
-                 // Não precisa mais do userId, pois a agenda é compartilhada.
                 const data = { ...eventData, createdAt: new Date().toISOString(), createdBy: this.getCurrentUser().email };
                 const docRef = await addDoc(collection(this.db, this.collectionName), data);
                 return { id: docRef.id, ...data };
             }
 
-            async updateEvent(id, eventData) {
-                const eventDoc = doc(this.db, this.collectionName, id);
-                await updateDoc(eventDoc, { ...eventData, updatedAt: new Date().toISOString() });
-            }
-
-            async deleteEvent(id) {
-                const eventDoc = doc(this.db, this.collectionName, id);
-                await deleteDoc(eventDoc);
-            }
-
+            updateEvent = (id, data) => updateDoc(doc(this.db, this.collectionName, id), { ...data, updatedAt: new Date().toISOString() });
+            deleteEvent = (id) => deleteDoc(doc(this.db, this.collectionName, id));
+            
             async clearAllEvents() {
-                 if (!this.isUserAuthorized()) throw new Error("Usuário não autorizado.");
-                // Apaga todos os eventos, já que a regra de segurança protege esta ação.
                 const snapshot = await getDocs(collection(this.db, this.collectionName));
                 const batch = writeBatch(this.db);
                 snapshot.forEach(doc => batch.delete(doc.ref));
@@ -104,12 +104,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; }
-        .lucide { width: 1em; height: 1em; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-        .modal-fade-in { animation: fadeIn 0.2s ease-out forwards; }
-    </style>
+    <style> body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; } .lucide { width: 1em; height: 1em; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; } @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } } .modal-fade-in { animation: fadeIn 0.2s ease-out forwards; } </style>
 </head>
 <body>
     <div id="root"></div>
@@ -117,186 +112,178 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- Ícones ---
-        const Calendar = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>);
-        const X = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>);
-        const LogOut = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>);
-        const Plus = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
-        const Edit3 = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>);
-        const CheckCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>);
-        const AlertCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>);
-        const Circle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>);
+        // --- Ícones (Omitido para brevidade) ---
+        const Settings = ({ s = 20, c = "" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2l.15.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
+        const Trash2 = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>);
+        const UserPlus = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="17" y1="11" x2="23" y2="11"></line></svg>);
+        const Calendar = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>); const X = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>); const LogOut = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>); const Plus = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>); const Edit3 = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>); const CheckCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>); const AlertCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>); const Circle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>);
 
-        // Componente de Login
-        const LoginScreen = () => {
-            const [isLoading, setIsLoading] = useState(false);
-            const handleGoogleLogin = async () => {
-                setIsLoading(true);
-                try {
-                    await window.firebaseService.signInWithGoogle();
-                } catch (error) {
-                    alert(`Erro no login: ${error.message}`);
-                    setIsLoading(false);
-                }
-            };
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center p-4">
-                   <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 max-w-md w-full shadow-2xl text-center">
-                       <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent mb-2">DJ MK</h1>
-                       <p className="text-gray-400 text-lg mb-8">Agenda Profissional</p>
-                       <button onClick={handleGoogleLogin} disabled={isLoading} className="w-full bg-white hover:bg-gray-100 text-gray-800 font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center justify-center gap-3 disabled:opacity-50">
-                           {isLoading ? 'Conectando...' : 'Entrar com Google'}
-                       </button>
-                   </div>
-                </div>
-            );
-        };
-
-        // Componente Principal
-        const DJAgendaApp = () => {
+        // Componente App Principal
+        const App = () => {
             const [user, setUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
+            const [authorizedEmails, setAuthorizedEmails] = useState([]);
             const [isAuthorized, setIsAuthorized] = useState(false);
-            const [events, setEvents] = useState([]);
-            const [editingEvent, setEditingEvent] = useState(null);
-            const [isAddingEvent, setIsAddingEvent] = useState(false);
-            const [showClearConfirmation, setShowClearConfirmation] = useState(false);
-            const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [currentPage, setCurrentPage] = useState('agenda');
 
             useEffect(() => {
-                const unsubscribe = window.firebaseService.onAuthChange(currentUser => {
+                const unsubscribe = window.firebaseService.onAuthChange(async (currentUser) => {
                     setUser(currentUser);
-                    setIsAuthorized(window.firebaseService.isUserAuthorized());
+                    if (currentUser) {
+                        const emails = await window.firebaseService.getAuthorizedEmails();
+                        setAuthorizedEmails(emails);
+                        setIsAuthorized(emails.includes(currentUser.email));
+                        setIsAdmin(window.firebaseService.isUserAdmin());
+                    } else {
+                        setIsAuthorized(false);
+                        setIsAdmin(false);
+                    }
                     setIsLoading(false);
                 });
                 return () => unsubscribe();
             }, []);
 
-            useEffect(() => {
-                if (user && isAuthorized) {
-                    const loadEvents = async () => {
-                        setIsLoading(true);
-                        try {
-                            const eventsData = await window.firebaseService.getAllEvents();
-                            setEvents(eventsData);
-                        } catch (error) {
-                            console.error('Falha ao carregar eventos:', error);
-                        } finally {
-                            setIsLoading(false);
-                        }
-                    };
-                    loadEvents();
-                } else {
-                    setEvents([]);
-                }
-            }, [user, isAuthorized]);
-            
-            // --- Funções CRUD ---
-            const addEvent = async (newEventData) => {
-                if (!newEventData.date || !newEventData.location) return alert('Data e local são obrigatórios.');
-                try {
-                    const savedEvent = await window.firebaseService.addEvent(newEventData);
-                    setEvents(prev => [...prev, savedEvent].sort((a,b) => new Date(a.date) - new Date(b.date)));
-                    setIsAddingEvent(false);
-                } catch (error) {
-                    alert(`Erro ao salvar: ${error.message}`);
-                }
-            };
-
-            const updateEvent = async (id, updatedData) => {
-                await window.firebaseService.updateEvent(id, updatedData);
-                setEvents(events.map(e => e.id === id ? { ...e, ...updatedData } : e));
-                setEditingEvent(null);
-            };
-
-            const deleteEvent = async (id) => {
-                await window.firebaseService.deleteEvent(id);
-                setEvents(events.filter(e => e.id !== id));
-            };
-            
-            const clearAllData = async () => {
-                await window.firebaseService.clearAllEvents();
-                setEvents([]);
-                setShowClearConfirmation(false);
-            };
-            
-            const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-            const monthNames = useMemo(() => [ 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro' ], []);
-
-            const filteredEvents = useMemo(() => {
-                return events.filter(event => {
-                    const eventDate = new Date(event.date + 'T12:00:00Z');
-                    return eventDate.getUTCMonth() === currentMonth && eventDate.getUTCFullYear() === currentYear;
-                });
-            }, [events, currentMonth, currentYear]);
-
-            const totals = useMemo(() => {
-                return events.reduce((acc, event) => {
-                    acc.totalRevenue += Number(event.totalValue) || 0;
-                    acc.totalPaid += Number(event.paidValue) || 0;
-                    return acc;
-                }, { totalRevenue: 0, totalPaid: 0 });
-            }, [events]);
-
             if (isLoading) {
-                return (
-                    <div className="min-h-screen bg-black flex items-center justify-center text-white">
-                        <div className="animate-spin w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full mr-3"></div>
-                        Carregando...
-                    </div>
-                );
+                return <div className="min-h-screen bg-black flex items-center justify-center text-white">Carregando...</div>;
             }
-            
             if (!user) return <LoginScreen />;
+            if (!isAuthorized) return <UnauthorizedScreen />;
 
-            if (!isAuthorized) {
-                return (
-                    <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white text-center p-4">
-                        <AlertCircle s={48} c="text-red-500 mb-4" />
-                        <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-                        <p className="text-gray-400 mb-6">Você não tem permissão para acessar esta agenda.</p>
-                        <button onClick={window.firebaseService.signOut} className="bg-yellow-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-400">
-                            Sair
-                        </button>
-                    </div>
-                );
-            }
-            
             return (
-                 <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
+                <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
                     <div className="max-w-7xl mx-auto">
-                        <Header user={user} onLogout={window.firebaseService.signOut} />
-                        <Summary totals={totals} totalPending={totals.totalRevenue - totals.totalPaid} formatCurrency={formatCurrency} />
-                        
-                        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 sm:p-6 mt-6">
-                            <MonthNavigator 
-                                currentMonth={currentMonth}
-                                currentYear={currentYear}
-                                setCurrentMonth={setCurrentMonth}
-                                setCurrentYear={setCurrentYear}
-                                monthNames={monthNames}
-                                onAddEvent={() => setIsAddingEvent(true)}
-                            />
-                            <EventTable 
-                                events={filteredEvents}
-                                editingEvent={editingEvent}
-                                setEditingEvent={setEditingEvent}
-                                updateEvent={updateEvent}
-                                deleteEvent={deleteEvent}
-                                formatCurrency={formatCurrency}
-                            />
-                        </div>
-                        <Footer onClearAll={() => setShowClearConfirmation(true)} />
+                        <Header user={user} isAdmin={isAdmin} onNavigate={setCurrentPage} onLogout={window.firebaseService.signOut} />
+                        {currentPage === 'agenda' && <AgendaScreen authorizedEmails={authorizedEmails} />}
+                        {currentPage === 'admin' && isAdmin && <AdminScreen />}
                     </div>
-                    {isAddingEvent && <EventModal onClose={() => setIsAddingEvent(false)} onSave={addEvent} title="Adicionar Novo Evento" />}
-                    {showClearConfirmation && <ConfirmationModal title="Confirmar Limpeza" message="Você tem certeza que deseja apagar TODOS os eventos? Esta ação não pode ser desfeita." onConfirm={clearAllData} onCancel={() => setShowClearConfirmation(false)} />}
                 </div>
             );
         };
+        
+        // --- Telas ---
+        const LoginScreen = () => { /* ... (código igual ao anterior) ... */ return ( <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center p-4"> <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 max-w-md w-full shadow-2xl text-center"> <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent mb-2">DJ MK</h1> <p className="text-gray-400 text-lg mb-8">Agenda Profissional</p> <button onClick={() => window.firebaseService.signInWithGoogle()} className="w-full bg-white hover:bg-gray-100 text-gray-800 font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center justify-center gap-3"> Entrar com Google </button> </div> </div> ); };
+        const UnauthorizedScreen = () => { /* ... (código igual ao anterior) ... */ return ( <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white text-center p-4"> <AlertCircle s={48} c="text-red-500 mb-4" /> <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1> <p className="text-gray-400 mb-6">Você não tem permissão para acessar esta agenda.</p> <button onClick={window.firebaseService.signOut} className="bg-yellow-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-400"> Sair </button> </div> ); };
 
-        // --- Componentes Filhos (mantidos para consistência visual) ---
-        const Header = ({ user, onLogout }) => ( <header className="flex justify-between items-center mb-6"> <div> <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1> <p className="text-gray-400">Logado como: {user.displayName || user.email}</p> </div> <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40"> <LogOut s={16} /> <span>Sair</span> </button> </header> );
+        // --- Tela de Administração ---
+        const AdminScreen = () => {
+            const [emails, setEmails] = useState([]);
+            const [newEmail, setNewEmail] = useState("");
+
+            useEffect(() => {
+                const fetchEmails = async () => {
+                    const emailList = await window.firebaseService.getAuthorizedEmails();
+                    setEmails(emailList);
+                };
+                fetchEmails();
+            }, []);
+
+            const handleAddEmail = async () => {
+                if (newEmail && !emails.includes(newEmail)) {
+                    await window.firebaseService.addAuthorizedEmail(newEmail);
+                    setEmails([...emails, newEmail]);
+                    setNewEmail("");
+                }
+            };
+
+            const handleRemoveEmail = async (emailToRemove) => {
+                if (emailToRemove === PRIMARY_ADMIN_EMAIL) {
+                    alert("Não é possível remover o administrador principal.");
+                    return;
+                }
+                await window.firebaseService.removeAuthorizedEmail(emailToRemove);
+                setEmails(emails.filter(e => e !== emailToRemove));
+            };
+
+            return (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 mt-6">
+                    <h2 className="text-2xl font-bold mb-4">Gerenciar Acessos</h2>
+                    <div className="mb-6">
+                        <h3 className="font-semibold mb-2">Adicionar Novo E-mail</h3>
+                        <div className="flex gap-2">
+                            <input
+                                type="email"
+                                value={newEmail}
+                                onChange={(e) => setNewEmail(e.target.value)}
+                                placeholder="email@exemplo.com"
+                                className="bg-gray-800 p-2 rounded w-full flex-grow"
+                            />
+                            <button onClick={handleAddEmail} className="bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 flex items-center gap-2">
+                                <UserPlus s={16} /> Adicionar
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold mb-2">E-mails Autorizados</h3>
+                        <ul className="space-y-2">
+                            {emails.map(email => (
+                                <li key={email} className="flex justify-between items-center bg-gray-800 p-3 rounded">
+                                    <span>{email}</span>
+                                    {email === PRIMARY_ADMIN_EMAIL ? (
+                                        <span className="text-xs text-yellow-400">Admin</span>
+                                    ) : (
+                                        <button onClick={() => handleRemoveEmail(email)} className="text-red-500 hover:text-red-400">
+                                            <Trash2 s={16} />
+                                        </button>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+            );
+        };
+        
+        // --- Tela da Agenda ---
+        const AgendaScreen = ({ authorizedEmails }) => {
+            const [events, setEvents] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+            const [editingEvent, setEditingEvent] = useState(null);
+            const [isAddingEvent, setIsAddingEvent] = useState(false);
+            const [showClearConfirmation, setShowClearConfirmation] = useState(false);
+            const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+            
+            useEffect(() => {
+                const load = async () => {
+                    setIsLoading(true);
+                    try {
+                        const data = await window.firebaseService.getAllEvents(authorizedEmails);
+                        setEvents(data);
+                    } catch(e) { console.error(e); }
+                    finally { setIsLoading(false); }
+                }
+                load();
+            }, [authorizedEmails]);
+
+            // Funções CRUD, componentes filhos, etc. (código igual ao da versão anterior)
+            const addEvent = async (newEventData) => { if (!newEventData.date || !newEventData.location) return alert('Data e local são obrigatórios.'); try { const savedEvent = await window.firebaseService.addEvent(newEventData); setEvents(prev => [...prev, savedEvent].sort((a,b) => new Date(a.date) - new Date(b.date))); setIsAddingEvent(false); } catch (error) { alert(`Erro ao salvar: ${error.message}`); } };
+            const updateEvent = async (id, updatedData) => { await window.firebaseService.updateEvent(id, updatedData); setEvents(events.map(e => e.id === id ? { ...e, ...updatedData } : e)); setEditingEvent(null); };
+            const deleteEvent = async (id) => { await window.firebaseService.deleteEvent(id); setEvents(events.filter(e => e.id !== id)); };
+            const clearAllData = async () => { await window.firebaseService.clearAllEvents(); setEvents([]); setShowClearConfirmation(false); };
+            const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+            const monthNames = useMemo(() => [ 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro' ], []);
+            const filteredEvents = useMemo(() => { return events.filter(event => { const eventDate = new Date(event.date + 'T12:00:00Z'); return eventDate.getUTCMonth() === currentMonth && eventDate.getUTCFullYear() === currentYear; }); }, [events, currentMonth, currentYear]);
+            const totals = useMemo(() => { return events.reduce((acc, event) => { acc.totalRevenue += Number(event.totalValue) || 0; acc.totalPaid += Number(event.paidValue) || 0; return acc; }, { totalRevenue: 0, totalPaid: 0 }); }, [events]);
+            
+            if (isLoading) return <div className="text-center py-10">Carregando eventos...</div>
+
+            return (
+                <>
+                    <Summary totals={totals} totalPending={totals.totalRevenue - totals.totalPaid} formatCurrency={formatCurrency} />
+                    <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 sm:p-6 mt-6">
+                        <MonthNavigator currentMonth={currentMonth} currentYear={currentYear} setCurrentMonth={setCurrentMonth} setCurrentYear={setCurrentYear} monthNames={monthNames} onAddEvent={() => setIsAddingEvent(true)} />
+                        <EventTable events={filteredEvents} editingEvent={editingEvent} setEditingEvent={setEditingEvent} updateEvent={updateEvent} deleteEvent={deleteEvent} formatCurrency={formatCurrency} />
+                    </div>
+                    <Footer onClearAll={() => setShowClearConfirmation(true)} />
+                    {isAddingEvent && <EventModal onClose={() => setIsAddingEvent(false)} onSave={addEvent} title="Adicionar Novo Evento" />}
+                    {showClearConfirmation && <ConfirmationModal title="Confirmar Limpeza" message="Você tem certeza que deseja apagar TODOS os eventos? Esta ação não pode ser desfeita." onConfirm={clearAllData} onCancel={() => setShowClearConfirmation(false)} />}
+                </>
+            );
+        };
+        
+        // --- Componentes Filhos (reutilizados) ---
+        const Header = ({ user, isAdmin, onNavigate, onLogout }) => ( <header className="flex justify-between items-center mb-6"> <div> <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1> <p className="text-gray-400">Logado como: {user.email}</p> </div> <div className="flex items-center gap-4"> {isAdmin && ( <button onClick={() => onNavigate('admin')} className="flex items-center gap-2 text-gray-400 hover:text-white"> <Settings s={16} /> Admin </button> )} <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40"> <LogOut s={16} /> <span>Sair</span> </button> </div> </header> );
         const Summary = ({ totals, totalPending, formatCurrency }) => ( <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Faturamento Total</p> <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Total Recebido</p> <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Pendente</p> <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p> </div> </div> );
         const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => { const changeMonth = (delta) => { let newMonth = currentMonth + delta; let newYear = currentYear; if (newMonth > 11) { newMonth = 0; newYear++; } if (newMonth < 0) { newMonth = 11; newYear--; } setCurrentMonth(newMonth); setCurrentYear(newYear); }; return ( <div className="flex justify-between items-center mb-4 flex-wrap gap-2"> <div className="flex items-center gap-2"> <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button> <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span> <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button> </div> <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400"> <Plus s={16} /> <span>Novo Evento</span> </button> </div> ); };
         const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => { if (events.length === 0) { return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>; } return ( <div className="overflow-x-auto"> <table className="w-full text-left"> <thead className="text-xs text-gray-400 uppercase"> <tr className="border-b border-gray-700"> <th className="px-4 py-3">Data</th> <th className="px-4 py-3">Local</th> <th className="px-4 py-3">Valor</th> <th className="px-4 py-3">Status</th> <th className="px-4 py-3 text-right">Ações</th> </tr> </thead> <tbody> {events.map(event => event.id === editingEvent ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} /> : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} /> )} </tbody> </table> </div> ); };
@@ -307,7 +294,7 @@
         const Footer = ({ onClearAll }) => ( <footer className="text-center mt-8"> <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline"> Limpar toda a agenda </button> <p className="text-xs text-gray-600 mt-2">Desenvolvido para DJ MK</p> </footer> );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<DJAgendaApp />);
+        root.render(<App />);
     </script>
 </body>
 </html>
