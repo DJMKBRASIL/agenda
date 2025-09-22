@@ -130,16 +130,23 @@
             useEffect(() => {
                 const unsubscribe = window.firebaseService.onAuthChange(async (currentUser) => {
                     setUser(currentUser);
-                    if (currentUser) {
-                        const emails = await window.firebaseService.getAuthorizedEmails();
-                        setAuthorizedEmails(emails);
-                        setIsAuthorized(emails.includes(currentUser.email));
-                        setIsAdmin(window.firebaseService.isUserAdmin());
-                    } else {
+                    try {
+                        if (currentUser) {
+                            const emails = await window.firebaseService.getAuthorizedEmails();
+                            setAuthorizedEmails(emails);
+                            setIsAuthorized(emails.includes(currentUser.email));
+                            setIsAdmin(window.firebaseService.isUserAdmin());
+                        } else {
+                            setIsAuthorized(false);
+                            setIsAdmin(false);
+                        }
+                    } catch (error) {
+                        console.error("Erro ao verificar autorização:", error);
                         setIsAuthorized(false);
                         setIsAdmin(false);
+                    } finally {
+                        setIsLoading(false);
                     }
-                    setIsLoading(false);
                 });
                 return () => unsubscribe();
             }, []);
@@ -153,7 +160,7 @@
             return (
                 <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
                     <div className="max-w-7xl mx-auto">
-                        <Header user={user} isAdmin={isAdmin} onNavigate={setCurrentPage} onLogout={window.firebaseService.signOut} />
+                        <Header user={user} isAdmin={isAdmin} currentPage={currentPage} onNavigate={setCurrentPage} onLogout={window.firebaseService.signOut} />
                         {currentPage === 'agenda' && <AgendaScreen authorizedEmails={authorizedEmails} />}
                         {currentPage === 'admin' && isAdmin && <AdminScreen />}
                     </div>
@@ -169,11 +176,14 @@
         const AdminScreen = () => {
             const [emails, setEmails] = useState([]);
             const [newEmail, setNewEmail] = useState("");
+            const [isLoading, setIsLoading] = useState(true);
 
             useEffect(() => {
                 const fetchEmails = async () => {
+                    setIsLoading(true);
                     const emailList = await window.firebaseService.getAuthorizedEmails();
                     setEmails(emailList);
+                    setIsLoading(false);
                 };
                 fetchEmails();
             }, []);
@@ -194,6 +204,8 @@
                 await window.firebaseService.removeAuthorizedEmail(emailToRemove);
                 setEmails(emails.filter(e => e !== emailToRemove));
             };
+
+            if (isLoading) return <div className="text-center py-10">Carregando e-mails...</div>;
 
             return (
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 mt-6">
@@ -253,7 +265,9 @@
                     } catch(e) { console.error(e); }
                     finally { setIsLoading(false); }
                 }
-                load();
+                if (authorizedEmails.length > 0) {
+                    load();
+                }
             }, [authorizedEmails]);
 
             // Funções CRUD, componentes filhos, etc. (código igual ao da versão anterior)
@@ -283,7 +297,26 @@
         };
         
         // --- Componentes Filhos (reutilizados) ---
-        const Header = ({ user, isAdmin, onNavigate, onLogout }) => ( <header className="flex justify-between items-center mb-6"> <div> <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1> <p className="text-gray-400">Logado como: {user.email}</p> </div> <div className="flex items-center gap-4"> {isAdmin && ( <button onClick={() => onNavigate('admin')} className="flex items-center gap-2 text-gray-400 hover:text-white"> <Settings s={16} /> Admin </button> )} <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40"> <LogOut s={16} /> <span>Sair</span> </button> </div> </header> );
+        const Header = ({ user, isAdmin, currentPage, onNavigate, onLogout }) => (
+            <header className="flex justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1>
+                    <p className="text-gray-400">Logado como: {user.email}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                    {isAdmin && (
+                        <button onClick={() => onNavigate(currentPage === 'admin' ? 'agenda' : 'admin')} className="flex items-center gap-2 text-gray-400 hover:text-white">
+                            {currentPage === 'admin' ? <Calendar s={16} /> : <Settings s={16} />}
+                            {currentPage === 'admin' ? 'Agenda' : 'Admin'}
+                        </button>
+                    )}
+                    <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40">
+                        <LogOut s={16} />
+                        <span>Sair</span>
+                    </button>
+                </div>
+            </header>
+        );
         const Summary = ({ totals, totalPending, formatCurrency }) => ( <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Faturamento Total</p> <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Total Recebido</p> <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Pendente</p> <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p> </div> </div> );
         const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => { const changeMonth = (delta) => { let newMonth = currentMonth + delta; let newYear = currentYear; if (newMonth > 11) { newMonth = 0; newYear++; } if (newMonth < 0) { newMonth = 11; newYear--; } setCurrentMonth(newMonth); setCurrentYear(newYear); }; return ( <div className="flex justify-between items-center mb-4 flex-wrap gap-2"> <div className="flex items-center gap-2"> <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button> <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span> <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button> </div> <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400"> <Plus s={16} /> <span>Novo Evento</span> </button> </div> ); };
         const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => { if (events.length === 0) { return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>; } return ( <div className="overflow-x-auto"> <table className="w-full text-left"> <thead className="text-xs text-gray-400 uppercase"> <tr className="border-b border-gray-700"> <th className="px-4 py-3">Data</th> <th className="px-4 py-3">Local</th> <th className="px-4 py-3">Valor</th> <th className="px-4 py-3">Status</th> <th className="px-4 py-3 text-right">Ações</th> </tr> </thead> <tbody> {events.map(event => event.id === editingEvent ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} /> : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} /> )} </tbody> </table> </div> ); };
