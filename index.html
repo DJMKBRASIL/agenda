@@ -55,6 +55,21 @@
             isUserAdmin = () => this.getCurrentUser()?.email === PRIMARY_ADMIN_EMAIL;
 
             // Gerenciamento de Acesso
+            async ensureConfigExists() {
+                if (!this.isUserAdmin()) return;
+                const docRef = doc(this.db, CONFIG_DOC_PATH);
+                const docSnap = await getDoc(docRef);
+                if (!docSnap.exists()) {
+                    console.log("Documento de configuração não encontrado, criando...");
+                    try {
+                        await setDoc(docRef, { emails: [PRIMARY_ADMIN_EMAIL] });
+                        console.log("Documento de configuração criado para o admin.");
+                    } catch (e) {
+                        console.error("Falha ao criar documento de configuração:", e);
+                    }
+                }
+            }
+            
             async getAuthorizedEmails() {
                 const docRef = doc(this.db, CONFIG_DOC_PATH);
                 const docSnap = await getDoc(docRef);
@@ -132,6 +147,11 @@
                     setUser(currentUser);
                     try {
                         if (currentUser) {
+                            // Se for o admin, garante que a configuração existe
+                            if (window.firebaseService.isUserAdmin()) {
+                                await window.firebaseService.ensureConfigExists();
+                            }
+                            // Depois, busca as permissões
                             const emails = await window.firebaseService.getAuthorizedEmails();
                             setAuthorizedEmails(emails);
                             setIsAuthorized(emails.includes(currentUser.email));
@@ -267,6 +287,8 @@
                 }
                 if (authorizedEmails.length > 0) {
                     load();
+                } else {
+                    setIsLoading(false); // Garante que o loading para se não houver e-mails autorizados
                 }
             }, [authorizedEmails]);
 
