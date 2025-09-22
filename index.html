@@ -11,7 +11,14 @@
         // Importações do Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- LISTA DE E-MAILS AUTORIZADOS ---
+        // Somente os e-mails nesta lista poderão ver e editar a agenda.
+        const authorizedEmails = [
+            "djmkbrasil@gmail.com",
+            "agendadjmk@gmail.com"
+        ];
 
         // --- Configuração do Firebase (Projeto agenda-afcce) ---
         const firebaseConfig = {
@@ -34,7 +41,7 @@
             console.error('❌ Erro ao inicializar Firebase:', error);
         }
 
-        // --- Classe de Serviço Firebase (Lógica Individual) ---
+        // --- Classe de Serviço Firebase (Lógica COMPARTILHADA) ---
         class FirebaseService {
             constructor() {
                 if (!db || !auth) throw new Error('Firebase não inicializado.');
@@ -49,21 +56,24 @@
             onAuthChange = (callback) => onAuthStateChanged(this.auth, callback);
             signOut = () => signOut(this.auth);
             getCurrentUser = () => this.auth.currentUser;
+            isUserAuthorized = () => {
+                const user = this.getCurrentUser();
+                return user && authorizedEmails.includes(user.email);
+            };
 
             // Firestore
             async getAllEvents() {
-                const user = this.getCurrentUser();
-                if (!user) throw new Error("Usuário não autenticado.");
-                const q = query(collection(this.db, this.collectionName), where("userId", "==", user.uid));
-                const snapshot = await getDocs(q);
+                if (!this.isUserAuthorized()) throw new Error("Usuário não autorizado.");
+                // Busca todos os documentos da coleção, pois a permissão é por e-mail.
+                const snapshot = await getDocs(collection(this.db, this.collectionName));
                 const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 return events.sort((a, b) => new Date(a.date) - new Date(b.date));
             }
 
             async addEvent(eventData) {
-                const user = this.getCurrentUser();
-                if (!user) throw new Error("Usuário não autenticado.");
-                const data = { ...eventData, userId: user.uid, createdAt: new Date().toISOString() };
+                if (!this.isUserAuthorized()) throw new Error("Usuário não autorizado.");
+                 // Não precisa mais do userId, pois a agenda é compartilhada.
+                const data = { ...eventData, createdAt: new Date().toISOString(), createdBy: this.getCurrentUser().email };
                 const docRef = await addDoc(collection(this.db, this.collectionName), data);
                 return { id: docRef.id, ...data };
             }
@@ -79,10 +89,9 @@
             }
 
             async clearAllEvents() {
-                const user = this.getCurrentUser();
-                if (!user) throw new Error("Usuário não autenticado.");
-                const q = query(collection(this.db, this.collectionName), where("userId", "==", user.uid));
-                const snapshot = await getDocs(q);
+                 if (!this.isUserAuthorized()) throw new Error("Usuário não autorizado.");
+                // Apaga todos os eventos, já que a regra de segurança protege esta ação.
+                const snapshot = await getDocs(collection(this.db, this.collectionName));
                 const batch = writeBatch(this.db);
                 snapshot.forEach(doc => batch.delete(doc.ref));
                 await batch.commit();
@@ -147,8 +156,8 @@
         const DJAgendaApp = () => {
             const [user, setUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
+            const [isAuthorized, setIsAuthorized] = useState(false);
             const [events, setEvents] = useState([]);
-            // ... (restante dos estados)
             const [editingEvent, setEditingEvent] = useState(null);
             const [isAddingEvent, setIsAddingEvent] = useState(false);
             const [showClearConfirmation, setShowClearConfirmation] = useState(false);
@@ -158,13 +167,14 @@
             useEffect(() => {
                 const unsubscribe = window.firebaseService.onAuthChange(currentUser => {
                     setUser(currentUser);
+                    setIsAuthorized(window.firebaseService.isUserAuthorized());
                     setIsLoading(false);
                 });
                 return () => unsubscribe();
             }, []);
 
             useEffect(() => {
-                if (user) {
+                if (user && isAuthorized) {
                     const loadEvents = async () => {
                         setIsLoading(true);
                         try {
@@ -180,7 +190,7 @@
                 } else {
                     setEvents([]);
                 }
-            }, [user]);
+            }, [user, isAuthorized]);
             
             // --- Funções CRUD ---
             const addEvent = async (newEventData) => {
@@ -210,15 +220,13 @@
                 setEvents([]);
                 setShowClearConfirmation(false);
             };
-            // --- Fim Funções CRUD ---
-
-            const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
             
+            const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
             const monthNames = useMemo(() => [ 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro' ], []);
 
             const filteredEvents = useMemo(() => {
                 return events.filter(event => {
-                    const eventDate = new Date(event.date + 'T12:00:00Z'); // Usar UTC para evitar problemas de fuso
+                    const eventDate = new Date(event.date + 'T12:00:00Z');
                     return eventDate.getUTCMonth() === currentMonth && eventDate.getUTCFullYear() === currentYear;
                 });
             }, [events, currentMonth, currentYear]);
@@ -241,9 +249,20 @@
             }
             
             if (!user) return <LoginScreen />;
+
+            if (!isAuthorized) {
+                return (
+                    <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white text-center p-4">
+                        <AlertCircle s={48} c="text-red-500 mb-4" />
+                        <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
+                        <p className="text-gray-400 mb-6">Você não tem permissão para acessar esta agenda.</p>
+                        <button onClick={window.firebaseService.signOut} className="bg-yellow-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-400">
+                            Sair
+                        </button>
+                    </div>
+                );
+            }
             
-            // O resto da UI continua aqui (Header, Summary, etc.)
-            // ... (código da UI omitido para brevidade, mas permanece o mesmo)
             return (
                  <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
                     <div className="max-w-7xl mx-auto">
@@ -276,14 +295,14 @@
             );
         };
 
-        // --- Componentes Filhos (sem alterações significativas) ---
+        // --- Componentes Filhos (mantidos para consistência visual) ---
         const Header = ({ user, onLogout }) => ( <header className="flex justify-between items-center mb-6"> <div> <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1> <p className="text-gray-400">Logado como: {user.displayName || user.email}</p> </div> <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40"> <LogOut s={16} /> <span>Sair</span> </button> </header> );
         const Summary = ({ totals, totalPending, formatCurrency }) => ( <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Faturamento Total</p> <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Total Recebido</p> <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Pendente</p> <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p> </div> </div> );
         const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => { const changeMonth = (delta) => { let newMonth = currentMonth + delta; let newYear = currentYear; if (newMonth > 11) { newMonth = 0; newYear++; } if (newMonth < 0) { newMonth = 11; newYear--; } setCurrentMonth(newMonth); setCurrentYear(newYear); }; return ( <div className="flex justify-between items-center mb-4 flex-wrap gap-2"> <div className="flex items-center gap-2"> <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button> <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span> <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button> </div> <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400"> <Plus s={16} /> <span>Novo Evento</span> </button> </div> ); };
         const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => { if (events.length === 0) { return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>; } return ( <div className="overflow-x-auto"> <table className="w-full text-left"> <thead className="text-xs text-gray-400 uppercase"> <tr className="border-b border-gray-700"> <th className="px-4 py-3">Data</th> <th className="px-4 py-3">Local</th> <th className="px-4 py-3">Valor</th> <th className="px-4 py-3">Status</th> <th className="px-4 py-3 text-right">Ações</th> </tr> </thead> <tbody> {events.map(event => event.id === editingEvent ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} /> : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} /> )} </tbody> </table> </div> ); };
         const EventDisplayRow = ({ event, onEdit, onDelete, formatCurrency }) => { const StatusIcon = { 'pago': CheckCircle, 'pendente': AlertCircle, 'em aberto': Circle }[event.status]; const statusColor = { 'pago': 'text-green-400', 'pendente': 'text-yellow-400', 'em aberto': 'text-red-400' }[event.status]; const remainingValue = (Number(event.totalValue) || 0) - (Number(event.paidValue) || 0); const date = new Date(event.date + 'T12:00:00Z'); return ( <tr className="border-b border-gray-800 hover:bg-gray-800/50"> <td className="px-4 py-3"> <div className="font-bold">{String(date.getUTCDate()).padStart(2, '0')}/{String(date.getUTCMonth() + 1).padStart(2, '0')}</div> <div className="text-xs text-gray-400">{event.startTime} - {event.endTime}</div> </td> <td className="px-4 py-3">{event.location}</td> <td className="px-4 py-3"> <div>{formatCurrency(event.totalValue)}</div> <div className="text-xs text-yellow-400">Falta: {formatCurrency(remainingValue)}</div> </td> <td className="px-4 py-3"> <span className={`flex items-center gap-2 ${statusColor}`}> <StatusIcon s={16} /> {event.status} </span> </td> <td className="px-4 py-3 text-right"> <button onClick={onEdit} className="p-2 text-gray-400 hover:text-white"><Edit3 s={16}/></button> <button onClick={() => onDelete(event.id)} className="p-2 text-gray-400 hover:text-red-500"><X s={16}/></button> </td> </tr> ); };
         const EventFormRow = ({ event, onSave, onCancel }) => { const [data, setData] = useState(event); const handleChange = (e) => setData({ ...data, [e.target.name]: e.target.value }); return ( <tr className="bg-gray-800/50"> <td colSpan="5" className="p-4"> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="location" placeholder="Local" value={data.location} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="totalValue" type="number" placeholder="Valor Total" value={data.totalValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago" value={data.paidValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações" value={data.observations} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full md:col-span-2 lg:col-span-4" rows="2"></textarea> </div> <div className="flex justify-end gap-2 mt-4"> <button onClick={onCancel} className="bg-gray-600 px-4 py-2 rounded hover:bg-gray-500">Cancelar</button> <button onClick={() => onSave(event.id, data)} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">Salvar</button> </div> </td> </tr> ); };
-        const EventModal = ({ onClose, onSave, title, initialData }) => { const [data, setData] = useState(initialData || { date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: '' }); const handleChange = e => setData({ ...data, [e.target.name]: e.target.value }); const handleSave = () => onSave({ ...data, totalValue: parseFloat(data.totalValue) || 0, paidValue: parseFloat(data.paidValue) || 0, }); return ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in"> <h2 className="text-xl font-bold mb-4">{title}</h2> <div className="space-y-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required/> <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required /> {/* O resto do formulário */} <div className="grid grid-cols-2 gap-4"> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <div className="grid grid-cols-2 gap-4"> <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea> </div> <div className="flex justify-end gap-3 mt-6"> <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400">Salvar</button> </div> </div> </div> ); };
+        const EventModal = ({ onClose, onSave, title, initialData }) => { const [data, setData] = useState(initialData || { date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: '' }); const handleChange = e => setData({ ...data, [e.target.name]: e.target.value }); const handleSave = () => onSave({ ...data, totalValue: parseFloat(data.totalValue) || 0, paidValue: parseFloat(data.paidValue) || 0, }); return ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in"> <h2 className="text-xl font-bold mb-4">{title}</h2> <div className="space-y-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required/> <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required /> <div className="grid grid-cols-2 gap-4"> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <div className="grid grid-cols-2 gap-4"> <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea> </div> <div className="flex justify-end gap-3 mt-6"> <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400">Salvar</button> </div> </div> </div> ); };
         const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-red-500/50 rounded-xl p-6 w-full max-w-md text-center"> <AlertCircle s={40} c="text-red-500 mx-auto mb-4" /> <h2 className="text-xl font-bold mb-2">{title}</h2> <p className="text-gray-400 mb-6">{message}</p> <div className="flex justify-center gap-4"> <button onClick={onCancel} className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={onConfirm} className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-500">Confirmar</button> </div> </div> </div> );
         const Footer = ({ onClearAll }) => ( <footer className="text-center mt-8"> <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline"> Limpar toda a agenda </button> <p className="text-xs text-gray-600 mt-2">Desenvolvido para DJ MK</p> </footer> );
 
