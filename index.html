@@ -62,8 +62,8 @@
                 if (!docSnap.exists()) {
                     console.log("Documento de configuração não encontrado, criando...");
                     try {
-                        await setDoc(docRef, { emails: [PRIMARY_ADMIN_EMAIL] });
-                        console.log("Documento de configuração criado para o admin.");
+                        await setDoc(docRef, { emails: [PRIMARY_ADMIN_EMAIL, "agendadjmk@gmail.com"] });
+                        console.log("Documento de configuração criado com e-mails iniciais.");
                     } catch (e) {
                         console.error("Falha ao criar documento de configuração:", e);
                     }
@@ -147,11 +147,9 @@
                     setUser(currentUser);
                     try {
                         if (currentUser) {
-                            // Se for o admin, garante que a configuração existe
                             if (window.firebaseService.isUserAdmin()) {
                                 await window.firebaseService.ensureConfigExists();
                             }
-                            // Depois, busca as permissões
                             const emails = await window.firebaseService.getAuthorizedEmails();
                             setAuthorizedEmails(emails);
                             setIsAuthorized(emails.includes(currentUser.email));
@@ -161,7 +159,8 @@
                             setIsAdmin(false);
                         }
                     } catch (error) {
-                        console.error("Erro ao verificar autorização:", error);
+                        console.error("!!! FALHA CRÍTICA AO VERIFICAR AUTORIZAÇÃO !!!:", error);
+                        alert("Ocorreu um erro ao verificar suas permissões. Verifique as regras de segurança do Firebase e o console do navegador para mais detalhes.");
                         setIsAuthorized(false);
                         setIsAdmin(false);
                     } finally {
