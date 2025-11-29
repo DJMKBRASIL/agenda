@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DJ MK - Manager Pro 2.0</title>
+    <meta name="description" content="Sistema de Gestão Profissional para DJ MK">
+    
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS (Estilo) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        mk: {
+                            dark: '#0a0a0a',
+                            panel: '#121212',
+                            gold: '#fbbf24',
+                            accent: '#3b82f6',
+                            danger: '#ef4444',
+                            success: '#10b981'
+                        }
+                    },
+                    animation: {
+                        'slide-in': 'slideIn 0.3s ease-out forwards',
+                        'fade-in': 'fadeIn 0.2s ease-out forwards',
+                    },
+                    keyframes: {
+                        slideIn: {
+                            '0%': { transform: 'translateY(-20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'scale(0.95)' },
+                            '100%': { opacity: '1', transform: 'scale(1)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- React & Babel (Engine) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Custom CSS para Scrollbars e Detalhes -->
+    <style>
+        body { background-color: #050505; color: #e5e5e5; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #121212; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #fbbf24; }
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .input-dark {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            transition: all 0.2s;
+        }
+        .input-dark:focus {
+            border-color: #fbbf24;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);
+        }
+    </style>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, query, writeBatch, arrayUnion, arrayRemove, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONFIGURAÇÃO (Mantida a original) ---
+        const PRIMARY_ADMIN_EMAIL = "djmkbrasil@gmail.com";
+        const CONFIG_DOC_PATH = "config/authorized_users";
+        const firebaseConfig = {
+            apiKey: "AIzaSyA9WOh8mWiKoQ8MkDLEQ_Aza3X9KUVzkp0",
+            authDomain: "agenda-afcce.firebaseapp.com",
+            projectId: "agenda-afcce",
+            storageBucket: "agenda-afcce.firebasestorage.app",
+            messagingSenderId: "557143303544",
+            appId: "1:557143303544:web:06adebeee10a15e614948d",
+            measurementId: "G-DMPH9NK93H"
+        };
+
+        let app, db, auth;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (error) { console.error('Erro Firebase:', error); }
+
+        // --- SERVIÇO FIREBASE (Refatorado) ---
+        class FirebaseService {
+            constructor() {
+                this.db = db;
+                this.auth = auth;
+                this.provider = new GoogleAuthProvider();
+                this.collectionName = 'dj-mk-events';
+            }
+
+            signIn = () => signInWithPopup(this.auth, this.provider);
+            signOut = () => signOut(this.auth);
+
+            // Novo método para expor o observador de autenticação para o React
+            monitorAuth(callback) {
+                return onAuthStateChanged(this.auth, callback);
+            }
+            
+            // Segurança: Verifica se é admin no client-side (reforçar com Security Rules no console)
+            async ensureConfigExists(user) {
+                if (user.email !== PRIMARY_ADMIN_EMAIL) return;
+                const docRef = doc(this.db, CONFIG_DOC_PATH);
+                const snap = await getDoc(docRef);
+                if (!snap.exists()) {
+                    await setDoc(docRef, { emails: [PRIMARY_ADMIN_EMAIL, "agendadjmk@gmail.com"] });
+                }
+            }
+
+            async getAuthorizedEmails() {
+                try {
+                    const snap = await getDoc(doc(this.db, CONFIG_DOC_PATH));
+                    return snap.exists() ? snap.data().emails : [];
+                } catch (e) { return []; }
+            }
+
+            async manageAccess(email, action) {
+                const docRef = doc(this.db, CONFIG_DOC_PATH);
+                const op = action === 'add' ? arrayUnion(email) : arrayRemove(email);
+                await updateDoc(docRef, { emails: op });
+            }
+
+            async getAllEvents(userEmail, authorizedList) {
+                if (!authorizedList.includes(userEmail)) throw new Error("Acesso não autorizado.");
+                // Nota: Em produção, usar query(collection, where(...)) para filtrar por data e economizar leitura
+                const snapshot = await getDocs(collection(this.db, this.collectionName));
+                return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
+            }
+
+            async saveEvent(eventData, id = null) {
+                const payload = { 
+                    ...eventData, 
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: this.auth.currentUser.email 
+                };
+                
+                if (id) {
+                    await updateDoc(doc(this.db, this.collectionName, id), payload);
+                    return { id, ...payload };
+                } else {
+                    payload.createdAt = new Date().toISOString();
+                    const ref = await addDoc(collection(this.db, this.collectionName), payload);
+                    return { id: ref.id, ...payload };
+                }
+            }
+
+            async deleteEvent(id) { await deleteDoc(doc(this.db, this.collectionName, id)); }
+            
+            async nukeDatabase() { // Limpar tudo
+                const snapshot = await getDocs(collection(this.db, this.collectionName));
+                const batch = writeBatch(this.db);
+                snapshot.forEach(d => batch.delete(d.ref));
+                await batch.commit();
+            }
+        }
+        window.fb = new FirebaseService();
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, createContext, useContext, useCallback } = React;
+
+        // --- ICONS (Lucide Style) ---
+        const Icon = ({ path, size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+        const Icons = {
+            Calendar: <path d="M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z M16 2v4 M8 2v4 M3 10h18" />,
+            User: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 0 1 0 8 4 4 0 0 1 0-8z" />,
+            LogOut: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9" />,
+            Plus: <path d="M12 5v14 M5 12h14" />,
+            Trash: <path d="M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />,
+            Edit: <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />,
+            Check: <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01 9 11.01" />,
+            Alert: <path d="M12 9v4 M12 17h.01 M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" />,
+            Clock: <path d="M12 6v6l4 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />,
+            Dollar: <path d="M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
+            Settings: <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2l.15.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+        };
+
+        // --- CONTEXT: TOASTS (Notificações) ---
+        const ToastContext = createContext();
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+            const addToast = (msg, type = 'info') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, msg, type }]);
+                setTimeout(() => removeToast(id), 3000);
+            };
+            const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
+
+            return (
+                <ToastContext.Provider value={addToast}>
+                    {children}
+                    <div className="fixed top-4 right-4 z-[9999] space-y-2">
+                        {toasts.map(t => (
+                            <div key={t.id} className={`animate-slide-in px-4 py-3 rounded-lg shadow-lg border border-white/10 text-sm font-medium flex items-center gap-2 backdrop-blur-md ${
+                                t.type === 'success' ? 'bg-green-500/20 text-green-200' :
+                                t.type === 'error' ? 'bg-red-500/20 text-red-200' : 'bg-blue-500/20 text-blue-200'
+                            }`}>
+                                {t.type === 'success' && <Icon path={Icons.Check} size={16} />}
+                                {t.type === 'error' && <Icon path={Icons.Alert} size={16} />}
+                                {t.msg}
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+
+        // --- COMPONENTS ---
+        const formatBRL = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+
+        // 1. Login Component (Visual Clean)
+        const LoginScreen = () => (
+            <div className="min-h-screen flex items-center justify-center bg-[url('https://images.unsplash.com/photo-1571266028243-3716f02d2d2e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80')] bg-cover bg-center">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+                <div className="relative z-10 p-8 glass-panel rounded-2xl max-w-md w-full text-center shadow-2xl">
+                    <div className="mb-6 inline-flex p-4 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+                         <Icon path={Icons.Calendar} size={48} className="text-mk-gold" />
+                    </div>
+                    <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">DJ MK</h1>
+                    <p className="text-gray-400 mb-8 font-light">Gestão Profissional & Agenda</p>
+                    <button onClick={window.fb.signIn} className="w-full bg-white hover:bg-gray-100 text-black font-bold py-3.5 px-6 rounded-xl transition-all transform hover:scale-[1.02] flex items-center justify-center gap-3">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" /><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
+                        Entrar com Google
+                    </button>
+                </div>
+            </div>
+        );
+
+        // 2. Stat Card (Dashboard)
+        const StatCard = ({ label, value, sub, colorClass, icon }) => (
+            <div className="glass-panel p-5 rounded-xl border-l-4 border-l-transparent hover:border-l-mk-gold transition-all group">
+                <div className="flex justify-between items-start mb-2">
+                    <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">{label}</p>
+                    <div className={`p-2 rounded-lg ${colorClass} bg-opacity-10 text-opacity-80`}>
+                         <Icon path={icon} size={18} className={colorClass.replace('bg-', 'text-')} />
+                    </div>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-1">{value}</h3>
+                {sub && <p className="text-xs text-gray-500">{sub}</p>}
+            </div>
+        );
+
+        // 3. Status Badge
+        const StatusBadge = ({ status }) => {
+            const styles = {
+                'pago': 'bg-green-500/20 text-green-400 border-green-500/30',
+                'pendente': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+                'em aberto': 'bg-red-500/20 text-red-400 border-red-500/30'
+            };
+            return (
+                <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${styles[status] || styles['em aberto']}`}>
+                    {status.toUpperCase()}
+                </span>
+            );
+        };
+
+        // 4. Main App
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const toast = useContext(ToastContext);
+
+            useEffect(() => {
+                // CORREÇÃO: Usando a função monitorAuth do window.fb em vez de acessar 'auth' diretamente
+                return window.fb.monitorAuth(u => {
+                    setUser(u);
+                    setLoading(false);
+                });
+            }, []);
+
+            if (loading) return <div className="h-screen bg-mk-dark flex items-center justify-center text-mk-gold animate-pulse">Carregando sistema...</div>;
+            if (!user) return <LoginScreen />;
+
+            return <Dashboard user={user} toast={toast} />;
+        };
+
+        const Dashboard = ({ user, toast }) => {
+            const [events, setEvents] = useState([]);
+            const [authorized, setAuthorized] = useState(false);
+            const [checkingAuth, setCheckingAuth] = useState(true);
+            const [view, setView] = useState('agenda'); // agenda | admin
+            const [modalOpen, setModalOpen] = useState(false);
+            const [editData, setEditData] = useState(null);
+            const [month, setMonth] = useState(new Date().getMonth());
+            const [year, setYear] = useState(new Date().getFullYear());
+
+            // Carregamento Inicial
+            useEffect(() => {
+                const init = async () => {
+                    try {
+                        await window.fb.ensureConfigExists(user);
+                        const authList = await window.fb.getAuthorizedEmails();
+                        if (authList.includes(user.email)) {
+                            setAuthorized(true);
+                            const allEvents = await window.fb.getAllEvents(user.email, authList);
+                            setEvents(allEvents);
+                        } else {
+                            toast("Acesso negado. Contate o administrador.", "error");
+                        }
+                    } catch (e) {
+                        toast("Erro ao carregar dados.", "error");
+                        console.error(e);
+                    } finally {
+                        setCheckingAuth(false);
+                    }
+                };
+                init();
+            }, [user]);
+
+            // CRUD Operations
+            const handleSave = async (data) => {
+                try {
+                    const saved = await window.fb.saveEvent(data, editData?.id);
+                    setEvents(prev => editData ? prev.map(e => e.id === saved.id ? saved : e) : [...prev, saved]);
+                    setModalOpen(false);
+                    toast("Evento salvo com sucesso!", "success");
+                } catch (e) { toast("Erro ao salvar.", "error"); }
+            };
+
+            const handleDelete = async (id) => {
+                if (!confirm("Tem certeza que deseja apagar?")) return;
+                try {
+                    await window.fb.deleteEvent(id);
+                    setEvents(prev => prev.filter(e => e.id !== id));
+                    toast("Evento removido.", "info");
+                } catch (e) { toast("Erro ao remover.", "error"); }
+            };
+
+            // Filters & Maths
+            const filteredEvents = useMemo(() => {
+                return events.filter(e => {
+                    const d = new Date(e.date + 'T12:00:00'); // Fix Timezone
+                    return d.getMonth() === month && d.getFullYear() === year;
+                });
+            }, [events, month, year]);
+
+            const stats = useMemo(() => {
+                const total = filteredEvents.reduce((acc, curr) => acc + (Number(curr.totalValue) || 0), 0);
+                const received = filteredEvents.reduce((acc, curr) => acc + (Number(curr.paidValue) || 0), 0);
+                return { total, received, pending: total - received, count: filteredEvents.length };
+            }, [filteredEvents]);
+
+            const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+            if (checkingAuth) return <div className="h-screen bg-mk-dark flex items-center justify-center text-gray-500">Verificando credenciais...</div>;
+            if (!authorized) return <div className="h-screen bg-mk-dark flex flex-col items-center justify-center text-white"><Icon path={Icons.Alert} size={48} className="text-red-500 mb-4"/><h2 className="text-xl">Acesso Negado</h2><button onClick={window.fb.signOut} className="mt-4 text-gray-400 underline">Sair</button></div>;
+
+            return (
+                <div className="min-h-screen pb-20 md:pb-10">
+                    {/* TOP BAR */}
+                    <header className="sticky top-0 z-30 bg-mk-dark/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-gradient-to-tr from-yellow-400 to-yellow-600 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-black text-xs">MK</div>
+                            <h1 className="hidden md:block font-bold text-lg">Agenda Pro</h1>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500 hidden sm:block">{user.email}</span>
+                            {user.email === PRIMARY_ADMIN_EMAIL && (
+                                <button onClick={() => setView(view === 'agenda' ? 'admin' : 'agenda')} className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition">
+                                    <Icon path={Icons.Settings} size={18} />
+                                </button>
+                            )}
+                            <button onClick={window.fb.signOut} className="p-2 hover:bg-red-500/10 rounded-full text-gray-400 hover:text-red-500 transition">
+                                <Icon path={Icons.LogOut} size={18} />
+                            </button>
+                        </div>
+                    </header>
+
+                    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+                        
+                        {view === 'agenda' ? (
+                            <>
+                                {/* STATS ROW */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <StatCard label="Faturamento Estimado" value={formatBRL(stats.total)} icon={Icons.Dollar} colorClass="bg-blue-500" />
+                                    <StatCard label="Recebido (Caixa)" value={formatBRL(stats.received)} icon={Icons.Check} colorClass="bg-green-500" 
+                                        sub={<div className="w-full bg-gray-700 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-green-500 h-full" style={{width: `${stats.total ? (stats.received/stats.total)*100 : 0}%`}}></div></div>}
+                                    />
+                                    <StatCard label="A Receber" value={formatBRL(stats.pending)} icon={Icons.Clock} colorClass="bg-yellow-500" />
+                                    <div className="glass-panel p-5 rounded-xl flex flex-col justify-center items-center text-center">
+                                        <p className="text-gray-400 text-xs uppercase mb-1">Eventos no Mês</p>
+                                        <h3 className="text-3xl font-bold text-white">{stats.count}</h3>
+                                    </div>
+                                </div>
+
+                                {/* CONTROLS */}
+                                <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+                                    <div className="flex items-center gap-4">
+                                        <button onClick={() => { if(month===0){setMonth(11);setYear(y=>y-1)}else{setMonth(m=>m-1)} }} className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white">{"<"}</button>
+                                        <h2 className="text-xl font-bold w-48 text-center">{monthNames[month]} <span className="text-mk-gold">{year}</span></h2>
+                                        <button onClick={() => { if(month===11){setMonth(0);setYear(y=>y+1)}else{setMonth(m=>m+1)} }} className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white">{">"}</button>
+                                    </div>
+                                    <button onClick={() => { setEditData(null); setModalOpen(true); }} className="w-full md:w-auto bg-mk-gold hover:bg-yellow-400 text-black font-bold py-2.5 px-6 rounded-lg flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-yellow-500/20">
+                                        <Icon path={Icons.Plus} size={18} /> Novo Evento
+                                    </button>
+                                </div>
+
+                                {/* LISTING - HYBRID (Card on Mobile, Table on Desktop) */}
+                                {filteredEvents.length === 0 ? (
+                                    <div className="text-center py-12 text-gray-500">Nenhuma data marcada para este mês.</div>
+                                ) : (
+                                    <div className="glass-panel rounded-xl overflow-hidden">
+                                        {/* Desktop Table */}
+                                        <table className="w-full hidden md:table text-left border-collapse">
+                                            <thead>
+                                                <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wider bg-black/20">
+                                                    <th className="p-4">Dia</th>
+                                                    <th className="p-4">Local</th>
+                                                    <th className="p-4">Horário</th>
+                                                    <th className="p-4">Financeiro</th>
+                                                    <th className="p-4">Status</th>
+                                                    <th className="p-4 text-right">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-800">
+                                                {filteredEvents.map(ev => {
+                                                    const day = ev.date.split('-')[2];
+                                                    const pending = (Number(ev.totalValue) - Number(ev.paidValue));
+                                                    return (
+                                                        <tr key={ev.id} className="hover:bg-white/5 transition-colors">
+                                                            <td className="p-4 font-bold text-lg text-mk-gold">{day}</td>
+                                                            <td className="p-4 font-medium">{ev.location}</td>
+                                                            <td className="p-4 text-sm text-gray-400">{ev.startTime} - {ev.endTime}</td>
+                                                            <td className="p-4">
+                                                                <div className="font-bold">{formatBRL(ev.totalValue)}</div>
+                                                                {pending > 0 && <div className="text-xs text-red-400">Falta: {formatBRL(pending)}</div>}
+                                                            </td>
+                                                            <td className="p-4"><StatusBadge status={ev.status} /></td>
+                                                            <td className="p-4 text-right">
+                                                                <div className="flex justify-end gap-2">
+                                                                    <button onClick={() => { setEditData(ev); setModalOpen(true); }} className="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded"><Icon path={Icons.Edit} size={14}/></button>
+                                                                    <button onClick={() => handleDelete(ev.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-800 hover:bg-gray-700 rounded"><Icon path={Icons.Trash} size={14}/></button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
+
+                                        {/* Mobile Cards */}
+                                        <div className="md:hidden divide-y divide-gray-800">
+                                            {filteredEvents.map(ev => {
+                                                const d = new Date(ev.date + 'T12:00:00');
+                                                const pending = (Number(ev.totalValue) - Number(ev.paidValue));
+                                                return (
+                                                    <div key={ev.id} className="p-4 active:bg-gray-800/50 transition-colors" onClick={() => { setEditData(ev); setModalOpen(true); }}>
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="bg-gray-800 rounded-lg p-2 text-center min-w-[50px]">
+                                                                    <span className="block text-xs text-gray-400 uppercase">{d.toLocaleDateString('pt-BR', {weekday: 'short'})}</span>
+                                                                    <span className="block text-xl font-bold text-mk-gold">{d.getDate()}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <h3 className="font-bold text-white">{ev.location}</h3>
+                                                                    <p className="text-xs text-gray-400">{ev.startTime} - {ev.endTime}</p>
+                                                                </div>
+                                                            </div>
+                                                            <StatusBadge status={ev.status} />
+                                                        </div>
+                                                        <div className="flex justify-between items-end mt-3 pl-[62px]">
+                                                            <div>
+                                                                <p className="text-sm font-semibold">{formatBRL(ev.totalValue)}</p>
+                                                                {pending > 0 && <p className="text-xs text-red-400">Restante: {formatBRL(pending)}</p>}
+                                                            </div>
+                                                            <Icon path={Icons.Edit} size={16} className="text-gray-600" />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <AdminPanel toast={toast} />
+                        )}
+                    </div>
+
+                    {/* MODAL */}
+                    {modalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                            <EventForm 
+                                initialData={editData} 
+                                onClose={() => setModalOpen(false)} 
+                                onSave={handleSave} 
+                            />
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // 5. Admin Panel (Separate Component)
+        const AdminPanel = ({ toast }) => {
+            const [emails, setEmails] = useState([]);
+            const [newEmail, setNewEmail] = useState("");
+
+            useEffect(() => {
+                window.fb.getAuthorizedEmails().then(setEmails);
+            }, []);
+
+            const add = async () => {
+                if(!newEmail) return;
+                await window.fb.manageAccess(newEmail, 'add');
+                setEmails([...emails, newEmail]);
+                setNewEmail("");
+                toast("Acesso concedido.", "success");
+            }
+            
+            const remove = async (email) => {
+                if(email === PRIMARY_ADMIN_EMAIL) return alert("Não pode remover o admin principal");
+                await window.fb.manageAccess(email, 'remove');
+                setEmails(emails.filter(e => e !== email));
+                toast("Acesso revogado.", "info");
+            }
+
+            return (
+                <div className="glass-panel p-6 rounded-xl max-w-2xl mx-auto">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><Icon path={Icons.Settings} /> Painel Administrativo</h2>
+                    <div className="mb-8">
+                        <label className="text-sm text-gray-400 mb-2 block">Adicionar Usuário (E-mail Google)</label>
+                        <div className="flex gap-2">
+                            <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="input-dark flex-1 p-3 rounded-lg" placeholder="usuario@gmail.com" />
+                            <button onClick={add} className="bg-mk-gold text-black px-6 rounded-lg font-bold">Adicionar</button>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        {emails.map(email => (
+                            <div key={email} className="flex justify-between items-center bg-gray-900/50 p-3 rounded-lg border border-gray-800">
+                                <span>{email}</span>
+                                {email !== PRIMARY_ADMIN_EMAIL && (
+                                    <button onClick={() => remove(email)} className="text-red-500 hover:text-red-400"><Icon path={Icons.Trash} size={18}/></button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // 6. Form Component
+        const EventForm = ({ initialData, onClose, onSave }) => {
+            const [formData, setFormData] = useState(initialData || {
+                date: new Date().toISOString().split('T')[0],
+                location: '', startTime: '', endTime: '', totalValue: '', paidValue: '', status: 'em aberto', observations: ''
+            });
+
+            const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+            return (
+                <div className="glass-panel w-full max-w-lg rounded-xl overflow-hidden shadow-2xl border-gray-700">
+                    <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                        <h3 className="text-lg font-bold text-white">{initialData ? 'Editar Evento' : 'Novo Evento'}</h3>
+                        <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+                    </div>
+                    <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Data</label>
+                                <input type="date" name="date" value={formData.date} onChange={handleChange} className="input-dark w-full p-3 rounded-lg" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Status</label>
+                                <select name="status" value={formData.status} onChange={handleChange} className="input-dark w-full p-3 rounded-lg">
+                                    <option value="em aberto">Em Aberto</option>
+                                    <option value="pendente">Pendente</option>
+                                    <option value="pago">Pago</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-400 mb-1 block">Local</label>
+                            <input name="location" value={formData.location} onChange={handleChange} placeholder="Nome do Club / Evento" className="input-dark w-full p-3 rounded-lg" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="time" name="startTime" value={formData.startTime} onChange={handleChange} className="input-dark w-full p-3 rounded-lg" />
+                            <input type="time" name="endTime" value={formData.endTime} onChange={handleChange} className="input-dark w-full p-3 rounded-lg" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Valor Total</label>
+                                <input type="number" name="totalValue" value={formData.totalValue} onChange={handleChange} placeholder="0,00" className="input-dark w-full p-3 rounded-lg" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Valor Recebido</label>
+                                <input type="number" name="paidValue" value={formData.paidValue} onChange={handleChange} placeholder="0,00" className="input-dark w-full p-3 rounded-lg" />
+                            </div>
+                        </div>
+                        <textarea name="observations" value={formData.observations} onChange={handleChange} placeholder="Notas sobre o rider técnico, contatos..." className="input-dark w-full p-3 rounded-lg h-24"></textarea>
+                    </div>
+                    <div className="p-4 bg-black/20 flex justify-end gap-3">
+                        <button onClick={onClose} className="px-6 py-2 rounded-lg text-gray-400 hover:bg-white/5 transition">Cancelar</button>
+                        <button onClick={() => onSave(formData)} className="px-6 py-2 rounded-lg bg-mk-gold text-black font-bold hover:bg-yellow-400 shadow-lg shadow-yellow-500/20 transition">Salvar Alterações</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const Root = () => (
+            <ToastProvider>
+                <App />
+            </ToastProvider>
+        );
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Root />);
+    </script>
+</body>
+</html>
