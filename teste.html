@@ -76,14 +76,18 @@
         }
     </style>
 
+    <!-- Configuração Global (Movida para cá para ser acessível por todo o app) -->
+    <script>
+        const PRIMARY_ADMIN_EMAIL = "djmkbrasil@gmail.com";
+    </script>
+
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, query, writeBatch, arrayUnion, arrayRemove, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- CONFIGURAÇÃO (Mantida a original) ---
-        const PRIMARY_ADMIN_EMAIL = "djmkbrasil@gmail.com";
+        // --- CONFIGURAÇÃO ---
         const CONFIG_DOC_PATH = "config/authorized_users";
         const firebaseConfig = {
             apiKey: "AIzaSyA9WOh8mWiKoQ8MkDLEQ_Aza3X9KUVzkp0",
