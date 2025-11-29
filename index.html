@@ -2,21 +2,97 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DJ MK - Agenda Profissional</title>
-    <meta name="description" content="Agenda profissional para DJ MK - Gerencie seus eventos, valores e pagamentos">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DJ MK - Manager Pro 2.0</title>
+    <meta name="description" content="Sistema de Gestão Profissional para DJ MK">
     
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS (Estilo) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        mk: {
+                            dark: '#0a0a0a',
+                            panel: '#121212',
+                            gold: '#fbbf24',
+                            accent: '#3b82f6',
+                            danger: '#ef4444',
+                            success: '#10b981'
+                        }
+                    },
+                    animation: {
+                        'slide-in': 'slideIn 0.3s ease-out forwards',
+                        'fade-in': 'fadeIn 0.2s ease-out forwards',
+                    },
+                    keyframes: {
+                        slideIn: {
+                            '0%': { transform: 'translateY(-20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'scale(0.95)' },
+                            '100%': { opacity: '1', transform: 'scale(1)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- React & Babel (Engine) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- PDF Generators (JSPDF) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- Custom CSS para Scrollbars e Detalhes -->
+    <style>
+        body { background-color: #050505; color: #e5e5e5; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #121212; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #fbbf24; }
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .input-dark {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            transition: all 0.2s;
+        }
+        .input-dark:focus {
+            border-color: #fbbf24;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);
+        }
+    </style>
+
+    <!-- Configuração Global (Movida para cá para ser acessível por todo o app) -->
+    <script>
+        const PRIMARY_ADMIN_EMAIL = "djmkbrasil@gmail.com";
+    </script>
+
     <!-- Firebase SDKs -->
     <script type="module">
-        // Importações do Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, query, writeBatch, arrayUnion, arrayRemove, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- CONFIGURAÇÃO GLOBAL ---
-        const PRIMARY_ADMIN_EMAIL = "djmkbrasil@gmail.com";
+        // --- CONFIGURAÇÃO ---
         const CONFIG_DOC_PATH = "config/authorized_users";
-
         const firebaseConfig = {
             apiKey: "AIzaSyA9WOh8mWiKoQ8MkDLEQ_Aza3X9KUVzkp0",
             authDomain: "agenda-afcce.firebaseapp.com",
@@ -32,323 +108,660 @@
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            console.log('🔥 Firebase inicializado!');
-        } catch (error) {
-            console.error('❌ Erro ao inicializar Firebase:', error);
-        }
+        } catch (error) { console.error('Erro Firebase:', error); }
 
-        // --- Classe de Serviço Firebase (com Gerenciamento de Acesso) ---
+        // --- SERVIÇO FIREBASE (Refatorado) ---
         class FirebaseService {
             constructor() {
-                if (!db || !auth) throw new Error('Firebase não inicializado.');
                 this.db = db;
                 this.auth = auth;
                 this.provider = new GoogleAuthProvider();
                 this.collectionName = 'dj-mk-events';
             }
 
-            // Auth
-            signInWithGoogle = () => signInWithPopup(this.auth, this.provider);
-            onAuthChange = (callback) => onAuthStateChanged(this.auth, callback);
+            signIn = () => signInWithPopup(this.auth, this.provider);
             signOut = () => signOut(this.auth);
-            getCurrentUser = () => this.auth.currentUser;
-            isUserAdmin = () => this.getCurrentUser()?.email === PRIMARY_ADMIN_EMAIL;
 
-            // Gerenciamento de Acesso
-            async ensureConfigExists() {
-                if (!this.isUserAdmin()) return;
+            // Novo método para expor o observador de autenticação para o React
+            monitorAuth(callback) {
+                return onAuthStateChanged(this.auth, callback);
+            }
+            
+            // Segurança: Verifica se é admin no client-side (reforçar com Security Rules no console)
+            async ensureConfigExists(user) {
+                if (user.email !== PRIMARY_ADMIN_EMAIL) return;
                 const docRef = doc(this.db, CONFIG_DOC_PATH);
-                const docSnap = await getDoc(docRef);
-                if (!docSnap.exists()) {
-                    console.log("Documento de configuração não encontrado, criando...");
-                    try {
-                        await setDoc(docRef, { emails: [PRIMARY_ADMIN_EMAIL, "agendadjmk@gmail.com"] });
-                        console.log("Documento de configuração criado com e-mails iniciais.");
-                    } catch (e) {
-                        console.error("Falha ao criar documento de configuração:", e);
-                    }
+                const snap = await getDoc(docRef);
+                if (!snap.exists()) {
+                    await setDoc(docRef, { emails: [PRIMARY_ADMIN_EMAIL, "agendadjmk@gmail.com"] });
                 }
             }
-            
+
             async getAuthorizedEmails() {
-                const docRef = doc(this.db, CONFIG_DOC_PATH);
-                const docSnap = await getDoc(docRef);
-                return docSnap.exists() ? docSnap.data().emails : [];
-            }
-            
-            async addAuthorizedEmail(email) {
-                 const docRef = doc(this.db, CONFIG_DOC_PATH);
-                 await updateDoc(docRef, { emails: arrayUnion(email) });
+                try {
+                    const snap = await getDoc(doc(this.db, CONFIG_DOC_PATH));
+                    return snap.exists() ? snap.data().emails : [];
+                } catch (e) { return []; }
             }
 
-            async removeAuthorizedEmail(email) {
+            async manageAccess(email, action) {
                 const docRef = doc(this.db, CONFIG_DOC_PATH);
-                await updateDoc(docRef, { emails: arrayRemove(email) });
+                const op = action === 'add' ? arrayUnion(email) : arrayRemove(email);
+                await updateDoc(docRef, { emails: op });
             }
-            
-             // Firestore CRUD
-            async getAllEvents(authorizedEmails) {
-                const user = this.getCurrentUser();
-                if (!user || !authorizedEmails.includes(user.email)) throw new Error("Usuário não autorizado.");
-                
+
+            async getAllEvents(userEmail, authorizedList) {
+                if (!authorizedList.includes(userEmail)) throw new Error("Acesso não autorizado.");
+                // Nota: Em produção, usar query(collection, where(...)) para filtrar por data e economizar leitura
                 const snapshot = await getDocs(collection(this.db, this.collectionName));
-                const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                return events.sort((a, b) => new Date(a.date) - new Date(b.date));
+                return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
             }
 
-            async addEvent(eventData) {
-                const data = { ...eventData, createdAt: new Date().toISOString(), createdBy: this.getCurrentUser().email };
-                const docRef = await addDoc(collection(this.db, this.collectionName), data);
-                return { id: docRef.id, ...data };
+            async saveEvent(eventData, id = null) {
+                const payload = { 
+                    ...eventData, 
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: this.auth.currentUser.email 
+                };
+                
+                if (id) {
+                    await updateDoc(doc(this.db, this.collectionName, id), payload);
+                    return { id, ...payload };
+                } else {
+                    payload.createdAt = new Date().toISOString();
+                    const ref = await addDoc(collection(this.db, this.collectionName), payload);
+                    return { id: ref.id, ...payload };
+                }
             }
 
-            updateEvent = (id, data) => updateDoc(doc(this.db, this.collectionName, id), { ...data, updatedAt: new Date().toISOString() });
-            deleteEvent = (id) => deleteDoc(doc(this.db, this.collectionName, id));
+            async deleteEvent(id) { await deleteDoc(doc(this.db, this.collectionName, id)); }
             
-            async clearAllEvents() {
+            async nukeDatabase() { // Limpar tudo
                 const snapshot = await getDocs(collection(this.db, this.collectionName));
                 const batch = writeBatch(this.db);
-                snapshot.forEach(doc => batch.delete(doc.ref));
+                snapshot.forEach(d => batch.delete(d.ref));
                 await batch.commit();
             }
         }
-        window.firebaseService = new FirebaseService();
+        window.fb = new FirebaseService();
     </script>
-
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style> body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; } .lucide { width: 1em; height: 1em; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; } @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } } .modal-fade-in { animation: fadeIn 0.2s ease-out forwards; } </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, createContext, useContext, useCallback } = React;
 
-        // --- Ícones (Omitido para brevidade) ---
-        const Settings = ({ s = 20, c = "" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2l.15.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
-        const Trash2 = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>);
-        const UserPlus = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="17" y1="11" x2="23" y2="11"></line></svg>);
-        const Calendar = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>); const X = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>); const LogOut = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>); const Plus = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>); const Edit3 = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>); const CheckCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>); const AlertCircle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>); const Circle = ({ s=20, c="" }) => (<svg className={`lucide ${c}`} width={s} height={s} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>);
+        // --- ICONS (Lucide Style) ---
+        const Icon = ({ path, size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+        const Icons = {
+            Calendar: <path d="M19 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z M16 2v4 M8 2v4 M3 10h18" />,
+            CalendarPlus: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1 M16 2v4 M8 2v4 M3 10h18 M10 15h6 M13 12v6" />,
+            User: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 0 1 0 8 4 4 0 0 1 0-8z" />,
+            LogOut: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9" />,
+            Plus: <path d="M12 5v14 M5 12h14" />,
+            Trash: <path d="M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />,
+            Edit: <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />,
+            Check: <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4 12 14.01 9 11.01" />,
+            Alert: <path d="M12 9v4 M12 17h.01 M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" />,
+            Clock: <path d="M12 6v6l4 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />,
+            Dollar: <path d="M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
+            Settings: <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2l.15.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />,
+            FileText: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" />
+        };
 
-        // Componente App Principal
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [isLoading, setIsLoading] = useState(true);
-            const [authorizedEmails, setAuthorizedEmails] = useState([]);
-            const [isAuthorized, setIsAuthorized] = useState(false);
-            const [isAdmin, setIsAdmin] = useState(false);
-            const [currentPage, setCurrentPage] = useState('agenda');
+        // --- CONTEXT: TOASTS (Notificações) ---
+        const ToastContext = createContext();
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+            const addToast = (msg, type = 'info') => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, msg, type }]);
+                setTimeout(() => removeToast(id), 3000);
+            };
+            const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
 
-            useEffect(() => {
-                const unsubscribe = window.firebaseService.onAuthChange(async (currentUser) => {
-                    setUser(currentUser);
-                    try {
-                        if (currentUser) {
-                            if (window.firebaseService.isUserAdmin()) {
-                                await window.firebaseService.ensureConfigExists();
-                            }
-                            const emails = await window.firebaseService.getAuthorizedEmails();
-                            setAuthorizedEmails(emails);
-                            setIsAuthorized(emails.includes(currentUser.email));
-                            setIsAdmin(window.firebaseService.isUserAdmin());
-                        } else {
-                            setIsAuthorized(false);
-                            setIsAdmin(false);
-                        }
-                    } catch (error) {
-                        console.error("!!! FALHA CRÍTICA AO VERIFICAR AUTORIZAÇÃO !!!:", error);
-                        alert("Ocorreu um erro ao verificar suas permissões. Verifique as regras de segurança do Firebase e o console do navegador para mais detalhes.");
-                        setIsAuthorized(false);
-                        setIsAdmin(false);
-                    } finally {
-                        setIsLoading(false);
-                    }
-                });
-                return () => unsubscribe();
-            }, []);
+            return (
+                <ToastContext.Provider value={addToast}>
+                    {children}
+                    <div className="fixed top-4 right-4 z-[9999] space-y-2">
+                        {toasts.map(t => (
+                            <div key={t.id} className={`animate-slide-in px-4 py-3 rounded-lg shadow-lg border border-white/10 text-sm font-medium flex items-center gap-2 backdrop-blur-md ${
+                                t.type === 'success' ? 'bg-green-500/20 text-green-200' :
+                                t.type === 'error' ? 'bg-red-500/20 text-red-200' : 'bg-blue-500/20 text-blue-200'
+                            }`}>
+                                {t.type === 'success' && <Icon path={Icons.Check} size={16} />}
+                                {t.type === 'error' && <Icon path={Icons.Alert} size={16} />}
+                                {t.msg}
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
 
-            if (isLoading) {
-                return <div className="min-h-screen bg-black flex items-center justify-center text-white">Carregando...</div>;
+        // --- COMPONENTS ---
+        const formatBRL = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
+
+        // Helper: Gerar Link do Google Agenda
+        const getGoogleCalendarUrl = (event) => {
+            if (!event.date || !event.location) return null;
+            
+            const formatDate = (dateStr, timeStr) => {
+                if(!timeStr) return '';
+                const d = new Date(`${dateStr}T${timeStr}:00`);
+                return d.toISOString().replace(/-|:|\.\d\d\d/g, "");
             }
-            if (!user) return <LoginScreen />;
-            if (!isAuthorized) return <UnauthorizedScreen />;
 
-            return (
-                <div className="bg-black text-white min-h-screen p-4 sm:p-6 md:p-8">
-                    <div className="max-w-7xl mx-auto">
-                        <Header user={user} isAdmin={isAdmin} currentPage={currentPage} onNavigate={setCurrentPage} onLogout={window.firebaseService.signOut} />
-                        {currentPage === 'agenda' && <AgendaScreen authorizedEmails={authorizedEmails} />}
-                        {currentPage === 'admin' && isAdmin && <AdminScreen />}
-                    </div>
-                </div>
-            );
-        };
-        
-        // --- Telas ---
-        const LoginScreen = () => { /* ... (código igual ao anterior) ... */ return ( <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center p-4"> <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 max-w-md w-full shadow-2xl text-center"> <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent mb-2">DJ MK</h1> <p className="text-gray-400 text-lg mb-8">Agenda Profissional</p> <button onClick={() => window.firebaseService.signInWithGoogle()} className="w-full bg-white hover:bg-gray-100 text-gray-800 font-semibold py-3 px-6 rounded-lg shadow-lg flex items-center justify-center gap-3"> Entrar com Google </button> </div> </div> ); };
-        const UnauthorizedScreen = () => { /* ... (código igual ao anterior) ... */ return ( <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white text-center p-4"> <AlertCircle s={48} c="text-red-500 mb-4" /> <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1> <p className="text-gray-400 mb-6">Você não tem permissão para acessar esta agenda.</p> <button onClick={window.firebaseService.signOut} className="bg-yellow-500 text-black px-6 py-2 rounded-lg font-bold hover:bg-yellow-400"> Sair </button> </div> ); };
-
-        // --- Tela de Administração ---
-        const AdminScreen = () => {
-            const [emails, setEmails] = useState([]);
-            const [newEmail, setNewEmail] = useState("");
-            const [isLoading, setIsLoading] = useState(true);
-
-            useEffect(() => {
-                const fetchEmails = async () => {
-                    setIsLoading(true);
-                    const emailList = await window.firebaseService.getAuthorizedEmails();
-                    setEmails(emailList);
-                    setIsLoading(false);
-                };
-                fetchEmails();
-            }, []);
-
-            const handleAddEmail = async () => {
-                if (newEmail && !emails.includes(newEmail)) {
-                    await window.firebaseService.addAuthorizedEmail(newEmail);
-                    setEmails([...emails, newEmail]);
-                    setNewEmail("");
-                }
-            };
-
-            const handleRemoveEmail = async (emailToRemove) => {
-                if (emailToRemove === PRIMARY_ADMIN_EMAIL) {
-                    alert("Não é possível remover o administrador principal.");
-                    return;
-                }
-                await window.firebaseService.removeAuthorizedEmail(emailToRemove);
-                setEmails(emails.filter(e => e !== emailToRemove));
-            };
-
-            if (isLoading) return <div className="text-center py-10">Carregando e-mails...</div>;
-
-            return (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 mt-6">
-                    <h2 className="text-2xl font-bold mb-4">Gerenciar Acessos</h2>
-                    <div className="mb-6">
-                        <h3 className="font-semibold mb-2">Adicionar Novo E-mail</h3>
-                        <div className="flex gap-2">
-                            <input
-                                type="email"
-                                value={newEmail}
-                                onChange={(e) => setNewEmail(e.target.value)}
-                                placeholder="email@exemplo.com"
-                                className="bg-gray-800 p-2 rounded w-full flex-grow"
-                            />
-                            <button onClick={handleAddEmail} className="bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 flex items-center gap-2">
-                                <UserPlus s={16} /> Adicionar
-                            </button>
-                        </div>
-                    </div>
-                    <div>
-                        <h3 className="font-semibold mb-2">E-mails Autorizados</h3>
-                        <ul className="space-y-2">
-                            {emails.map(email => (
-                                <li key={email} className="flex justify-between items-center bg-gray-800 p-3 rounded">
-                                    <span>{email}</span>
-                                    {email === PRIMARY_ADMIN_EMAIL ? (
-                                        <span className="text-xs text-yellow-400">Admin</span>
-                                    ) : (
-                                        <button onClick={() => handleRemoveEmail(email)} className="text-red-500 hover:text-red-400">
-                                            <Trash2 s={16} />
-                                        </button>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                </div>
-            );
-        };
-        
-        // --- Tela da Agenda ---
-        const AgendaScreen = ({ authorizedEmails }) => {
-            const [events, setEvents] = useState([]);
-            const [isLoading, setIsLoading] = useState(true);
-            const [editingEvent, setEditingEvent] = useState(null);
-            const [isAddingEvent, setIsAddingEvent] = useState(false);
-            const [showClearConfirmation, setShowClearConfirmation] = useState(false);
-            const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+            // Lógica para virada de noite (ex: começa 23h e termina 05h do dia seguinte)
+            let startDateTime = formatDate(event.date, event.startTime || '22:00');
+            let endDateObj = new Date(`${event.date}T${event.endTime || '04:00'}:00`);
             
-            useEffect(() => {
-                const load = async () => {
-                    setIsLoading(true);
-                    try {
-                        const data = await window.firebaseService.getAllEvents(authorizedEmails);
-                        setEvents(data);
-                    } catch(e) { console.error(e); }
-                    finally { setIsLoading(false); }
-                }
-                if (authorizedEmails.length > 0) {
-                    load();
-                } else {
-                    setIsLoading(false); // Garante que o loading para se não houver e-mails autorizados
-                }
-            }, [authorizedEmails]);
-
-            // Funções CRUD, componentes filhos, etc. (código igual ao da versão anterior)
-            const addEvent = async (newEventData) => { if (!newEventData.date || !newEventData.location) return alert('Data e local são obrigatórios.'); try { const savedEvent = await window.firebaseService.addEvent(newEventData); setEvents(prev => [...prev, savedEvent].sort((a,b) => new Date(a.date) - new Date(b.date))); setIsAddingEvent(false); } catch (error) { alert(`Erro ao salvar: ${error.message}`); } };
-            const updateEvent = async (id, updatedData) => { await window.firebaseService.updateEvent(id, updatedData); setEvents(events.map(e => e.id === id ? { ...e, ...updatedData } : e)); setEditingEvent(null); };
-            const deleteEvent = async (id) => { await window.firebaseService.deleteEvent(id); setEvents(events.filter(e => e.id !== id)); };
-            const clearAllData = async () => { await window.firebaseService.clearAllEvents(); setEvents([]); setShowClearConfirmation(false); };
-            const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-            const monthNames = useMemo(() => [ 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro' ], []);
-            const filteredEvents = useMemo(() => { return events.filter(event => { const eventDate = new Date(event.date + 'T12:00:00Z'); return eventDate.getUTCMonth() === currentMonth && eventDate.getUTCFullYear() === currentYear; }); }, [events, currentMonth, currentYear]);
-            const totals = useMemo(() => { return events.reduce((acc, event) => { acc.totalRevenue += Number(event.totalValue) || 0; acc.totalPaid += Number(event.paidValue) || 0; return acc; }, { totalRevenue: 0, totalPaid: 0 }); }, [events]);
+            if (event.startTime && event.endTime && event.endTime < event.startTime) {
+                // Se hora final < inicial, assume dia seguinte
+                endDateObj.setDate(endDateObj.getDate() + 1);
+            }
             
-            if (isLoading) return <div className="text-center py-10">Carregando eventos...</div>
+            const endDateTime = endDateObj.toISOString().replace(/-|:|\.\d\d\d/g, "");
 
-            return (
-                <>
-                    <Summary totals={totals} totalPending={totals.totalRevenue - totals.totalPaid} formatCurrency={formatCurrency} />
-                    <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 sm:p-6 mt-6">
-                        <MonthNavigator currentMonth={currentMonth} currentYear={currentYear} setCurrentMonth={setCurrentMonth} setCurrentYear={setCurrentYear} monthNames={monthNames} onAddEvent={() => setIsAddingEvent(true)} />
-                        <EventTable events={filteredEvents} editingEvent={editingEvent} setEditingEvent={setEditingEvent} updateEvent={updateEvent} deleteEvent={deleteEvent} formatCurrency={formatCurrency} />
-                    </div>
-                    <Footer onClearAll={() => setShowClearConfirmation(true)} />
-                    {isAddingEvent && <EventModal onClose={() => setIsAddingEvent(false)} onSave={addEvent} title="Adicionar Novo Evento" />}
-                    {showClearConfirmation && <ConfirmationModal title="Confirmar Limpeza" message="Você tem certeza que deseja apagar TODOS os eventos? Esta ação não pode ser desfeita." onConfirm={clearAllData} onCancel={() => setShowClearConfirmation(false)} />}
-                </>
-            );
+            const title = encodeURIComponent(`DJ MK @ ${event.location}`);
+            const details = encodeURIComponent(`Cachê: ${formatBRL(event.totalValue)}\nStatus: ${event.status}\nObs: ${event.observations || ''}`);
+            const location = encodeURIComponent(event.location);
+
+            return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}&location=${location}&dates=${startDateTime}/${endDateTime}`;
         };
-        
-        // --- Componentes Filhos (reutilizados) ---
-        const Header = ({ user, isAdmin, currentPage, onNavigate, onLogout }) => (
-            <header className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-white via-gray-300 to-yellow-500 bg-clip-text text-transparent">Agenda DJ MK</h1>
-                    <p className="text-gray-400">Logado como: {user.email}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                    {isAdmin && (
-                        <button onClick={() => onNavigate(currentPage === 'admin' ? 'agenda' : 'admin')} className="flex items-center gap-2 text-gray-400 hover:text-white">
-                            {currentPage === 'admin' ? <Calendar s={16} /> : <Settings s={16} />}
-                            {currentPage === 'admin' ? 'Agenda' : 'Admin'}
-                        </button>
-                    )}
-                    <button onClick={onLogout} className="flex items-center gap-2 bg-red-600/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-600/40">
-                        <LogOut s={16} />
-                        <span>Sair</span>
+
+        // 1. Login Component (Visual Clean)
+        const LoginScreen = () => (
+            <div className="min-h-screen flex items-center justify-center bg-[url('https://images.unsplash.com/photo-1571266028243-3716f02d2d2e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80')] bg-cover bg-center">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+                <div className="relative z-10 p-8 glass-panel rounded-2xl max-w-md w-full text-center shadow-2xl">
+                    <div className="mb-6 inline-flex p-4 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+                         <Icon path={Icons.Calendar} size={48} className="text-mk-gold" />
+                    </div>
+                    <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">DJ MK</h1>
+                    <p className="text-gray-400 mb-8 font-light">Gestão Profissional & Agenda</p>
+                    <button onClick={window.fb.signIn} className="w-full bg-white hover:bg-gray-100 text-black font-bold py-3.5 px-6 rounded-xl transition-all transform hover:scale-[1.02] flex items-center justify-center gap-3">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" /><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
+                        Entrar com Google
                     </button>
                 </div>
-            </header>
+            </div>
         );
-        const Summary = ({ totals, totalPending, formatCurrency }) => ( <div className="grid grid-cols-1 md:grid-cols-3 gap-4"> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Faturamento Total</p> <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalRevenue)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Total Recebido</p> <p className="text-2xl font-bold text-blue-400">{formatCurrency(totals.totalPaid)}</p> </div> <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"> <p className="text-sm text-gray-400">Pendente</p> <p className="text-2xl font-bold text-yellow-400">{formatCurrency(totalPending)}</p> </div> </div> );
-        const MonthNavigator = ({ currentMonth, currentYear, setCurrentMonth, setCurrentYear, monthNames, onAddEvent }) => { const changeMonth = (delta) => { let newMonth = currentMonth + delta; let newYear = currentYear; if (newMonth > 11) { newMonth = 0; newYear++; } if (newMonth < 0) { newMonth = 11; newYear--; } setCurrentMonth(newMonth); setCurrentYear(newYear); }; return ( <div className="flex justify-between items-center mb-4 flex-wrap gap-2"> <div className="flex items-center gap-2"> <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-gray-700">{"<"}</button> <span className="text-xl font-semibold w-40 text-center">{monthNames[currentMonth]} {currentYear}</span> <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-gray-700">{">"}</button> </div> <button onClick={onAddEvent} className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold hover:bg-yellow-400"> <Plus s={16} /> <span>Novo Evento</span> </button> </div> ); };
-        const EventTable = ({ events, editingEvent, setEditingEvent, updateEvent, deleteEvent, formatCurrency }) => { if (events.length === 0) { return <p className="text-center text-gray-500 py-8">Nenhum evento para este mês.</p>; } return ( <div className="overflow-x-auto"> <table className="w-full text-left"> <thead className="text-xs text-gray-400 uppercase"> <tr className="border-b border-gray-700"> <th className="px-4 py-3">Data</th> <th className="px-4 py-3">Local</th> <th className="px-4 py-3">Valor</th> <th className="px-4 py-3">Status</th> <th className="px-4 py-3 text-right">Ações</th> </tr> </thead> <tbody> {events.map(event => event.id === editingEvent ? <EventFormRow key={event.id} event={event} onSave={updateEvent} onCancel={() => setEditingEvent(null)} /> : <EventDisplayRow key={event.id} event={event} onEdit={() => setEditingEvent(event.id)} onDelete={deleteEvent} formatCurrency={formatCurrency} /> )} </tbody> </table> </div> ); };
-        const EventDisplayRow = ({ event, onEdit, onDelete, formatCurrency }) => { const StatusIcon = { 'pago': CheckCircle, 'pendente': AlertCircle, 'em aberto': Circle }[event.status]; const statusColor = { 'pago': 'text-green-400', 'pendente': 'text-yellow-400', 'em aberto': 'text-red-400' }[event.status]; const remainingValue = (Number(event.totalValue) || 0) - (Number(event.paidValue) || 0); const date = new Date(event.date + 'T12:00:00Z'); return ( <tr className="border-b border-gray-800 hover:bg-gray-800/50"> <td className="px-4 py-3"> <div className="font-bold">{String(date.getUTCDate()).padStart(2, '0')}/{String(date.getUTCMonth() + 1).padStart(2, '0')}</div> <div className="text-xs text-gray-400">{event.startTime} - {event.endTime}</div> </td> <td className="px-4 py-3">{event.location}</td> <td className="px-4 py-3"> <div>{formatCurrency(event.totalValue)}</div> <div className="text-xs text-yellow-400">Falta: {formatCurrency(remainingValue)}</div> </td> <td className="px-4 py-3"> <span className={`flex items-center gap-2 ${statusColor}`}> <StatusIcon s={16} /> {event.status} </span> </td> <td className="px-4 py-3 text-right"> <button onClick={onEdit} className="p-2 text-gray-400 hover:text-white"><Edit3 s={16}/></button> <button onClick={() => onDelete(event.id)} className="p-2 text-gray-400 hover:text-red-500"><X s={16}/></button> </td> </tr> ); };
-        const EventFormRow = ({ event, onSave, onCancel }) => { const [data, setData] = useState(event); const handleChange = (e) => setData({ ...data, [e.target.name]: e.target.value }); return ( <tr className="bg-gray-800/50"> <td colSpan="5" className="p-4"> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="location" placeholder="Local" value={data.location} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="totalValue" type="number" placeholder="Valor Total" value={data.totalValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago" value={data.paidValue} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full" /> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações" value={data.observations} onChange={handleChange} className="bg-gray-700 p-2 rounded w-full md:col-span-2 lg:col-span-4" rows="2"></textarea> </div> <div className="flex justify-end gap-2 mt-4"> <button onClick={onCancel} className="bg-gray-600 px-4 py-2 rounded hover:bg-gray-500">Cancelar</button> <button onClick={() => onSave(event.id, data)} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">Salvar</button> </div> </td> </tr> ); };
-        const EventModal = ({ onClose, onSave, title, initialData }) => { const [data, setData] = useState(initialData || { date: '', startTime: '', endTime: '', location: '', totalValue: '', paidValue: '', status: 'em aberto', observations: '' }); const handleChange = e => setData({ ...data, [e.target.name]: e.target.value }); const handleSave = () => onSave({ ...data, totalValue: parseFloat(data.totalValue) || 0, paidValue: parseFloat(data.paidValue) || 0, }); return ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg modal-fade-in"> <h2 className="text-xl font-bold mb-4">{title}</h2> <div className="space-y-4"> <input name="date" type="date" value={data.date} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required/> <input name="location" placeholder="Local do Evento" value={data.location} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" required /> <div className="grid grid-cols-2 gap-4"> <input name="startTime" type="time" value={data.startTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="endTime" type="time" value={data.endTime} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <div className="grid grid-cols-2 gap-4"> <input name="totalValue" type="number" placeholder="Valor Total (R$)" value={data.totalValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> <input name="paidValue" type="number" placeholder="Valor Pago (R$)" value={data.paidValue} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full" /> </div> <select name="status" value={data.status} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full"> <option value="em aberto">Em Aberto</option> <option value="pendente">Pendente</option> <option value="pago">Pago</option> </select> <textarea name="observations" placeholder="Observações..." value={data.observations} onChange={handleChange} className="bg-gray-800 p-3 rounded w-full min-h-[80px]"></textarea> </div> <div className="flex justify-end gap-3 mt-6"> <button onClick={onClose} className="bg-gray-700 px-5 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={handleSave} className="bg-yellow-500 text-black px-5 py-2 rounded-lg font-bold hover:bg-yellow-400">Salvar</button> </div> </div> </div> ); };
-        const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => ( <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"> <div className="bg-gray-900 border border-red-500/50 rounded-xl p-6 w-full max-w-md text-center"> <AlertCircle s={40} c="text-red-500 mx-auto mb-4" /> <h2 className="text-xl font-bold mb-2">{title}</h2> <p className="text-gray-400 mb-6">{message}</p> <div className="flex justify-center gap-4"> <button onClick={onCancel} className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600">Cancelar</button> <button onClick={onConfirm} className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-500">Confirmar</button> </div> </div> </div> );
-        const Footer = ({ onClearAll }) => ( <footer className="text-center mt-8"> <button onClick={onClearAll} className="text-sm text-red-500 hover:text-red-400 hover:underline"> Limpar toda a agenda </button> <p className="text-xs text-gray-600 mt-2">Desenvolvido para DJ MK</p> </footer> );
+
+        // 2. Stat Card (Dashboard)
+        const StatCard = ({ label, value, sub, colorClass, icon }) => (
+            <div className="glass-panel p-5 rounded-xl border-l-4 border-l-transparent hover:border-l-mk-gold transition-all group">
+                <div className="flex justify-between items-start mb-2">
+                    <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">{label}</p>
+                    <div className={`p-2 rounded-lg ${colorClass} bg-opacity-10 text-opacity-80`}>
+                         <Icon path={icon} size={18} className={colorClass.replace('bg-', 'text-')} />
+                    </div>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-1">{value}</h3>
+                {sub && <p className="text-xs text-gray-500">{sub}</p>}
+            </div>
+        );
+
+        // 3. Status Badge
+        const StatusBadge = ({ status }) => {
+            const styles = {
+                'pago': 'bg-green-500/20 text-green-400 border-green-500/30',
+                'pendente': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+                'em aberto': 'bg-red-500/20 text-red-400 border-red-500/30'
+            };
+            return (
+                <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${styles[status] || styles['em aberto']}`}>
+                    {status.toUpperCase()}
+                </span>
+            );
+        };
+
+        // 4. Main App
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const toast = useContext(ToastContext);
+
+            useEffect(() => {
+                // CORREÇÃO: Usando a função monitorAuth do window.fb em vez de acessar 'auth' diretamente
+                return window.fb.monitorAuth(u => {
+                    setUser(u);
+                    setLoading(false);
+                });
+            }, []);
+
+            if (loading) return <div className="h-screen bg-mk-dark flex items-center justify-center text-mk-gold animate-pulse">Carregando sistema...</div>;
+            if (!user) return <LoginScreen />;
+
+            return <Dashboard user={user} toast={toast} />;
+        };
+
+        const Dashboard = ({ user, toast }) => {
+            const [events, setEvents] = useState([]);
+            const [authorized, setAuthorized] = useState(false);
+            const [checkingAuth, setCheckingAuth] = useState(true);
+            const [view, setView] = useState('agenda'); // agenda | admin
+            const [modalOpen, setModalOpen] = useState(false);
+            const [editData, setEditData] = useState(null);
+            const [month, setMonth] = useState(new Date().getMonth());
+            const [year, setYear] = useState(new Date().getFullYear());
+
+            // Carregamento Inicial
+            useEffect(() => {
+                const init = async () => {
+                    try {
+                        await window.fb.ensureConfigExists(user);
+                        const authList = await window.fb.getAuthorizedEmails();
+                        if (authList.includes(user.email)) {
+                            setAuthorized(true);
+                            const allEvents = await window.fb.getAllEvents(user.email, authList);
+                            setEvents(allEvents);
+                        } else {
+                            toast("Acesso negado. Contate o administrador.", "error");
+                        }
+                    } catch (e) {
+                        toast("Erro ao carregar dados.", "error");
+                        console.error(e);
+                    } finally {
+                        setCheckingAuth(false);
+                    }
+                };
+                init();
+            }, [user]);
+
+            // CRUD Operations
+            const handleSave = async (data) => {
+                try {
+                    const saved = await window.fb.saveEvent(data, editData?.id);
+                    setEvents(prev => editData ? prev.map(e => e.id === saved.id ? saved : e) : [...prev, saved]);
+                    setModalOpen(false);
+                    toast("Evento salvo com sucesso!", "success");
+                } catch (e) { toast("Erro ao salvar.", "error"); }
+            };
+
+            const handleDelete = async (id) => {
+                if (!confirm("Tem certeza que deseja apagar?")) return;
+                try {
+                    await window.fb.deleteEvent(id);
+                    setEvents(prev => prev.filter(e => e.id !== id));
+                    toast("Evento removido.", "info");
+                } catch (e) { toast("Erro ao remover.", "error"); }
+            };
+
+            // Filters & Maths
+            const filteredEvents = useMemo(() => {
+                return events.filter(e => {
+                    const d = new Date(e.date + 'T12:00:00'); // Fix Timezone
+                    return d.getMonth() === month && d.getFullYear() === year;
+                });
+            }, [events, month, year]);
+
+            const stats = useMemo(() => {
+                const total = filteredEvents.reduce((acc, curr) => acc + (Number(curr.totalValue) || 0), 0);
+                const received = filteredEvents.reduce((acc, curr) => acc + (Number(curr.paidValue) || 0), 0);
+                return { total, received, pending: total - received, count: filteredEvents.length };
+            }, [filteredEvents]);
+
+            const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+            // --- PDF GENERATOR ---
+            const generateAvailabilityPDF = () => {
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
+                    const monthName = monthNames[month];
+                    
+                    // 1. Configurações Visuais
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(22);
+                    doc.setTextColor(251, 191, 36); // MK Gold Color (RGB)
+                    doc.text("DJ MK", 14, 20);
+                    
+                    doc.setFontSize(12);
+                    doc.setTextColor(100);
+                    doc.text("Booking & Management", 14, 26);
+                    doc.line(14, 30, 196, 30); // Linha separadora
+
+                    // 2. Título do Relatório
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(16);
+                    doc.setTextColor(0);
+                    doc.text(`Disponibilidade - ${monthName} / ${year}`, 14, 42);
+
+                    // 3. Lógica de Disponibilidade
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const availabilityData = [];
+                    const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+                    // Mapeia dias ocupados
+                    const busyDates = filteredEvents.map(e => parseInt(e.date.split('-')[2]));
+
+                    for (let d = 1; d <= daysInMonth; d++) {
+                        if (!busyDates.includes(d)) {
+                            const dateObj = new Date(year, month, d);
+                            const dayOfWeek = weekDays[dateObj.getDay()];
+                            availabilityData.push([
+                                `${String(d).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}`,
+                                dayOfWeek,
+                                "Disponível (Integral)"
+                            ]);
+                        }
+                    }
+
+                    // 4. Gera Tabela (usando autoTable)
+                    doc.autoTable({
+                        startY: 50,
+                        head: [['Data', 'Dia da Semana', 'Status']],
+                        body: availabilityData,
+                        theme: 'striped',
+                        headStyles: { fillColor: [20, 20, 20], textColor: [251, 191, 36] }, // Preto e Dourado
+                        styles: { fontSize: 10, cellPadding: 3 },
+                        alternateRowStyles: { fillColor: [245, 245, 245] }
+                    });
+
+                    // 5. Rodapé
+                    const finalY = doc.lastAutoTable.finalY + 20;
+                    doc.setFontSize(10);
+                    doc.setTextColor(100);
+                    doc.text("Para agendamentos: djmkbrasil@gmail.com", 14, finalY);
+                    doc.text("Datas sujeitas a alteração sem aviso prévio.", 14, finalY + 5);
+
+                    // Salvar
+                    doc.save(`Disponibilidade_DJMK_${monthName}_${year}.pdf`);
+                    toast("PDF gerado com sucesso!", "success");
+
+                } catch (e) {
+                    console.error(e);
+                    toast("Erro ao gerar PDF.", "error");
+                }
+            };
+
+
+            if (checkingAuth) return <div className="h-screen bg-mk-dark flex items-center justify-center text-gray-500">Verificando credenciais...</div>;
+            if (!authorized) return <div className="h-screen bg-mk-dark flex flex-col items-center justify-center text-white"><Icon path={Icons.Alert} size={48} className="text-red-500 mb-4"/><h2 className="text-xl">Acesso Negado</h2><button onClick={window.fb.signOut} className="mt-4 text-gray-400 underline">Sair</button></div>;
+
+            return (
+                <div className="min-h-screen pb-20 md:pb-10">
+                    {/* TOP BAR */}
+                    <header className="sticky top-0 z-30 bg-mk-dark/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-gradient-to-tr from-yellow-400 to-yellow-600 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-black text-xs">MK</div>
+                            <h1 className="hidden md:block font-bold text-lg">Agenda Pro</h1>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500 hidden sm:block">{user.email}</span>
+                            {user.email === PRIMARY_ADMIN_EMAIL && (
+                                <button onClick={() => setView(view === 'agenda' ? 'admin' : 'agenda')} className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white transition">
+                                    <Icon path={Icons.Settings} size={18} />
+                                </button>
+                            )}
+                            <button onClick={window.fb.signOut} className="p-2 hover:bg-red-500/10 rounded-full text-gray-400 hover:text-red-500 transition">
+                                <Icon path={Icons.LogOut} size={18} />
+                            </button>
+                        </div>
+                    </header>
+
+                    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+                        
+                        {view === 'agenda' ? (
+                            <>
+                                {/* STATS ROW */}
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <StatCard label="Faturamento Estimado" value={formatBRL(stats.total)} icon={Icons.Dollar} colorClass="bg-blue-500" />
+                                    <StatCard label="Recebido (Caixa)" value={formatBRL(stats.received)} icon={Icons.Check} colorClass="bg-green-500" 
+                                        sub={<div className="w-full bg-gray-700 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-green-500 h-full" style={{width: `${stats.total ? (stats.received/stats.total)*100 : 0}%`}}></div></div>}
+                                    />
+                                    <StatCard label="A Receber" value={formatBRL(stats.pending)} icon={Icons.Clock} colorClass="bg-yellow-500" />
+                                    <div className="glass-panel p-5 rounded-xl flex flex-col justify-center items-center text-center">
+                                        <p className="text-gray-400 text-xs uppercase mb-1">Eventos no Mês</p>
+                                        <h3 className="text-3xl font-bold text-white">{stats.count}</h3>
+                                    </div>
+                                </div>
+
+                                {/* CONTROLS */}
+                                <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+                                    <div className="flex items-center gap-4">
+                                        <button onClick={() => { if(month===0){setMonth(11);setYear(y=>y-1)}else{setMonth(m=>m-1)} }} className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white">{"<"}</button>
+                                        <h2 className="text-xl font-bold w-48 text-center">{monthNames[month]} <span className="text-mk-gold">{year}</span></h2>
+                                        <button onClick={() => { if(month===11){setMonth(0);setYear(y=>y+1)}else{setMonth(m=>m+1)} }} className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white">{">"}</button>
+                                    </div>
+                                    <div className="flex gap-3 w-full md:w-auto">
+                                        <button onClick={generateAvailabilityPDF} className="flex-1 md:flex-none bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700" title="Gerar PDF de Disponibilidade">
+                                            <Icon path={Icons.FileText} size={18} /> <span className="hidden sm:inline">PDF Disp.</span>
+                                        </button>
+                                        <button onClick={() => { setEditData(null); setModalOpen(true); }} className="flex-1 md:flex-none bg-mk-gold hover:bg-yellow-400 text-black font-bold py-2.5 px-6 rounded-lg flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-yellow-500/20">
+                                            <Icon path={Icons.Plus} size={18} /> Novo Evento
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* LISTING - HYBRID (Card on Mobile, Table on Desktop) */}
+                                {filteredEvents.length === 0 ? (
+                                    <div className="text-center py-12 text-gray-500">Nenhuma data marcada para este mês.</div>
+                                ) : (
+                                    <div className="glass-panel rounded-xl overflow-hidden">
+                                        {/* Desktop Table */}
+                                        <table className="w-full hidden md:table text-left border-collapse">
+                                            <thead>
+                                                <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wider bg-black/20">
+                                                    <th className="p-4">Dia</th>
+                                                    <th className="p-4">Local</th>
+                                                    <th className="p-4">Horário</th>
+                                                    <th className="p-4">Financeiro</th>
+                                                    <th className="p-4">Status</th>
+                                                    <th className="p-4 text-right">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-800">
+                                                {filteredEvents.map(ev => {
+                                                    const day = ev.date.split('-')[2];
+                                                    const pending = (Number(ev.totalValue) - Number(ev.paidValue));
+                                                    return (
+                                                        <tr key={ev.id} className="hover:bg-white/5 transition-colors">
+                                                            <td className="p-4 font-bold text-lg text-mk-gold">{day}</td>
+                                                            <td className="p-4 font-medium">{ev.location}</td>
+                                                            <td className="p-4 text-sm text-gray-400">{ev.startTime} - {ev.endTime}</td>
+                                                            <td className="p-4">
+                                                                <div className="font-bold">{formatBRL(ev.totalValue)}</div>
+                                                                {pending > 0 && <div className="text-xs text-red-400">Falta: {formatBRL(pending)}</div>}
+                                                            </td>
+                                                            <td className="p-4"><StatusBadge status={ev.status} /></td>
+                                                            <td className="p-4 text-right">
+                                                                <div className="flex justify-end gap-2">
+                                                                    <a href={getGoogleCalendarUrl(ev)} target="_blank" className="p-2 text-gray-400 hover:text-blue-400 bg-gray-800 hover:bg-gray-700 rounded" title="Add ao Google Agenda"><Icon path={Icons.CalendarPlus} size={14}/></a>
+                                                                    <button onClick={() => { setEditData(ev); setModalOpen(true); }} className="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded"><Icon path={Icons.Edit} size={14}/></button>
+                                                                    <button onClick={() => handleDelete(ev.id)} className="p-2 text-gray-400 hover:text-red-500 bg-gray-800 hover:bg-gray-700 rounded"><Icon path={Icons.Trash} size={14}/></button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                })}
+                                            </tbody>
+                                        </table>
+
+                                        {/* Mobile Cards */}
+                                        <div className="md:hidden divide-y divide-gray-800">
+                                            {filteredEvents.map(ev => {
+                                                const d = new Date(ev.date + 'T12:00:00');
+                                                const pending = (Number(ev.totalValue) - Number(ev.paidValue));
+                                                return (
+                                                    <div key={ev.id} className="p-4 active:bg-gray-800/50 transition-colors" onClick={() => { setEditData(ev); setModalOpen(true); }}>
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="bg-gray-800 rounded-lg p-2 text-center min-w-[50px]">
+                                                                    <span className="block text-xs text-gray-400 uppercase">{d.toLocaleDateString('pt-BR', {weekday: 'short'})}</span>
+                                                                    <span className="block text-xl font-bold text-mk-gold">{d.getDate()}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <h3 className="font-bold text-white">{ev.location}</h3>
+                                                                    <p className="text-xs text-gray-400">{ev.startTime} - {ev.endTime}</p>
+                                                                </div>
+                                                            </div>
+                                                            <StatusBadge status={ev.status} />
+                                                        </div>
+                                                        <div className="flex justify-between items-end mt-3 pl-[62px]">
+                                                            <div>
+                                                                <p className="text-sm font-semibold">{formatBRL(ev.totalValue)}</p>
+                                                                {pending > 0 && <p className="text-xs text-red-400">Restante: {formatBRL(pending)}</p>}
+                                                            </div>
+                                                            <div className="flex gap-3">
+                                                                <a href={getGoogleCalendarUrl(ev)} target="_blank" onClick={e => e.stopPropagation()} className="text-gray-500 hover:text-blue-500"><Icon path={Icons.CalendarPlus} size={18} /></a>
+                                                                <Icon path={Icons.Edit} size={18} className="text-gray-600" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <AdminPanel toast={toast} />
+                        )}
+                    </div>
+
+                    {/* MODAL */}
+                    {modalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                            <EventForm 
+                                initialData={editData} 
+                                onClose={() => setModalOpen(false)} 
+                                onSave={handleSave} 
+                            />
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // 5. Admin Panel (Separate Component)
+        const AdminPanel = ({ toast }) => {
+            const [emails, setEmails] = useState([]);
+            const [newEmail, setNewEmail] = useState("");
+
+            useEffect(() => {
+                window.fb.getAuthorizedEmails().then(setEmails);
+            }, []);
+
+            const add = async () => {
+                if(!newEmail) return;
+                await window.fb.manageAccess(newEmail, 'add');
+                setEmails([...emails, newEmail]);
+                setNewEmail("");
+                toast("Acesso concedido.", "success");
+            }
+            
+            const remove = async (email) => {
+                if(email === PRIMARY_ADMIN_EMAIL) return alert("Não pode remover o admin principal");
+                await window.fb.manageAccess(email, 'remove');
+                setEmails(emails.filter(e => e !== email));
+                toast("Acesso revogado.", "info");
+            }
+
+            return (
+                <div className="glass-panel p-6 rounded-xl max-w-2xl mx-auto">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><Icon path={Icons.Settings} /> Painel Administrativo</h2>
+                    <div className="mb-8">
+                        <label className="text-sm text-gray-400 mb-2 block">Adicionar Usuário (E-mail Google)</label>
+                        <div className="flex gap-2">
+                            <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="input-dark flex-1 p-3 rounded-lg" placeholder="usuario@gmail.com" />
+                            <button onClick={add} className="bg-mk-gold text-black px-6 rounded-lg font-bold">Adicionar</button>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        {emails.map(email => (
+                            <div key={email} className="flex justify-between items-center bg-gray-900/50 p-3 rounded-lg border border-gray-800">
+                                <span>{email}</span>
+                                {email !== PRIMARY_ADMIN_EMAIL && (
+                                    <button onClick={() => remove(email)} className="text-red-500 hover:text-red-400"><Icon path={Icons.Trash} size={18}/></button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // 6. Form Component
+        const EventForm = ({ initialData, onClose, onSave }) => {
+            const [formData, setFormData] = useState(initialData || {
+                date: new Date().toISOString().split('T')[0],
+                location: '', startTime: '', endTime: '', totalValue: '', paidValue: '', status: 'em aberto', observations: ''
+            });
+
+            const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+            return (
+                <div className="glass-panel w-full max-w-lg rounded-xl overflow-hidden shadow-2xl border-gray-700">
+                    <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                        <h3 className="text-lg font-bold text-white">{initialData ? 'Editar Evento' : 'Novo Evento'}</h3>
+                        <div className="flex gap-3">
+                            {initialData && getGoogleCalendarUrl(initialData) && (
+                                <a href={getGoogleCalendarUrl(initialData)} target="_blank" className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300">
+                                    <Icon path={Icons.CalendarPlus} size={16}/> Add à Agenda
+                                </a>
+                            )}
+                            <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+                        </div>
+                    </div>
+                    <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Data</label>
+                                <input type="date" name="date" value={formData.date} onChange={handleChange} className="input-dark w-full p-3 rounded-lg" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Status</label>
+                                <select name="status" value={formData.status} onChange={handleChange} className="input-dark w-full p-3 rounded-lg">
+                                    <option value="em aberto">Em Aberto</option>
+                                    <option value="pendente">Pendente</option>
+                                    <option value="pago">Pago</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-400 mb-1 block">Local</label>
+                            <input name="location" value={formData.location} onChange={handleChange} placeholder="Nome do Club / Evento" className="input-dark w-full p-3 rounded-lg" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="time" name="startTime" value={formData.startTime} onChange={handleChange} className="input-dark w-full p-3 rounded-lg" />
+                            <input type="time" name="endTime" value={formData.endTime} onChange={handleChange} className="input-dark w-full p-3 rounded-lg" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Valor Total</label>
+                                <input type="number" name="totalValue" value={formData.totalValue} onChange={handleChange} placeholder="0,00" className="input-dark w-full p-3 rounded-lg" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-400 mb-1 block">Valor Recebido</label>
+                                <input type="number" name="paidValue" value={formData.paidValue} onChange={handleChange} placeholder="0,00" className="input-dark w-full p-3 rounded-lg" />
+                            </div>
+                        </div>
+                        <textarea name="observations" value={formData.observations} onChange={handleChange} placeholder="Notas sobre o rider técnico, contatos..." className="input-dark w-full p-3 rounded-lg h-24"></textarea>
+                    </div>
+                    <div className="p-4 bg-black/20 flex justify-end gap-3">
+                        <button onClick={onClose} className="px-6 py-2 rounded-lg text-gray-400 hover:bg-white/5 transition">Cancelar</button>
+                        <button onClick={() => onSave(formData)} className="px-6 py-2 rounded-lg bg-mk-gold text-black font-bold hover:bg-yellow-400 shadow-lg shadow-yellow-500/20 transition">Salvar Alterações</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const Root = () => (
+            <ToastProvider>
+                <App />
+            </ToastProvider>
+        );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<Root />);
     </script>
 </body>
 </html>
